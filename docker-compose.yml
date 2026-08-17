@@ -15,6 +15,23 @@ services:
       timeout: 5s
       retries: 10
 
+  postgres_test:
+    image: postgres:16-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_DB: pharma_qms_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pharma_qms_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
   backend:
     build: ./backend
     environment:

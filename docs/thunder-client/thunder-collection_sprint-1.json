@@ -1,0 +1,34 @@
+{
+  "client": "Thunder Client",
+  "collectionName": "AI Pharma QMS - Sprint 1",
+  "dateExported": "2026-08-17T00:00:00.000Z",
+  "version": "1.2",
+  "folders": [],
+  "requests": [
+    {
+      "_id": "commit-valid",
+      "name": "POST Commit Valid Complaint",
+      "url": "http://localhost:8000/api/complaints",
+      "method": "POST",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"source_type\": \"MANUAL\",\n  \"complaint_source\": \"Phone\",\n  \"customer_name\": \"Acme Hospital\",\n  \"product_type\": \"FDF\",\n  \"product_name\": \"Paracetamol 500 mg\",\n  \"batch_lot_number\": \"LOT-TC-001\",\n  \"manufacturing_date\": \"March 2026\",\n  \"expiry_retest_date\": \"Not Provided\",\n  \"complaint_category\": \"Packaging\",\n  \"complaint_description\": \"Damaged blister seal received.\"\n}"
+      }
+    },
+    {
+      "_id": "commit-missing",
+      "name": "POST Missing Required Field",
+      "url": "http://localhost:8000/api/complaints",
+      "method": "POST",
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": { "type": "json", "raw": "{\"customer_name\":\"Acme Hospital\"}" }
+    },
+    { "_id": "list", "name": "GET List Complaints", "url": "http://localhost:8000/api/complaints?page=1&page_size=20", "method": "GET" },
+    { "_id": "get", "name": "GET Complaint by ID", "url": "http://localhost:8000/api/complaints/{{complaint_id}}", "method": "GET" },
+    { "_id": "unknown", "name": "GET Unknown Complaint", "url": "http://localhost:8000/api/complaints/00000000-0000-4000-8000-000000000000", "method": "GET" },
+    { "_id": "health", "name": "GET Health", "url": "http://localhost:8000/health", "method": "GET" },
+    { "_id": "ready", "name": "GET Readiness", "url": "http://localhost:8000/ready", "method": "GET" }
+  ],
+  "settings": { "options": { "baseUrl": "", "envId": "" } }
+}
