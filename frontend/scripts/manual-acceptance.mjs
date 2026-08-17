@@ -3,6 +3,7 @@ import path from 'node:path'
 import { chromium } from 'playwright-core'
 
 const samples = path.resolve('..', 'sample-data')
+const fakeAiUrl = process.env.FAKE_AI_URL
 const browser = await chromium.launch({
   executablePath:
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -11,6 +12,28 @@ const browser = await chromium.launch({
 
 try {
   const page = await browser.newPage()
+  const observedCalls = []
+  page.on('request', (request) => {
+    if (request.url().includes('/api/')) {
+      observedCalls.push(
+        `${request.method()} ${new URL(request.url()).pathname}`,
+      )
+    }
+  })
+  if (fakeAiUrl) {
+    await page.route('**/api/complaints/**', async (route) => {
+      const pathname = new URL(route.request().url()).pathname
+      if (
+        pathname.endsWith('/process-document') ||
+        pathname.endsWith('/process-text') ||
+        pathname.endsWith('/correct')
+      ) {
+        await route.continue({ url: `${fakeAiUrl}${pathname}` })
+      } else {
+        await route.continue()
+      }
+    })
+  }
   page.setDefaultTimeout(120_000)
   await page.goto('http://localhost:5173', { waitUntil: 'networkidle' })
   const ledgerCount = async () =>
@@ -181,6 +204,15 @@ try {
     await page.getByLabel('Correction instruction').inputValue()
   ).includes('Fictional Retry')
   await page.unroute('**/api/complaints/correct')
+  await page.getByRole('button', { name: 'Retry correction' }).click()
+  await page.waitForFunction(
+    () =>
+      document.querySelector('input[name="customerName"]')?.value ===
+      'Fictional Retry Company',
+  )
+  const retrySucceeded =
+    (await page.getByLabel(/Customer Name/).inputValue()) ===
+    'Fictional Retry Company'
 
   await page
     .getByLabel('Choose a PDF or drag it here')
@@ -245,10 +277,12 @@ try {
       explicitClearWorked,
       failureDraftPreserved,
       failureInstructionPreserved,
+      retrySucceeded,
       textlessError,
       draftPreservedAfterTextless,
       incompleteBatch: incompleteBatch || null,
       incompleteAssessment,
+      observedCalls,
     }),
   )
 } finally {
