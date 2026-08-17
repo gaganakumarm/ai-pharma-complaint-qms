@@ -5,6 +5,11 @@ React form, FastAPI use-case and repository layers, and PostgreSQL persistence w
 concurrency-safe human-readable complaint numbers. AI features remain intentionally
 unimplemented.
 
+Sprint 2 adds non-persistent text and email extraction through a compiled LangGraph
+workflow and the official Groq SDK. Extracted values populate the editable Redux draft
+but are never committed until the user explicitly selects **Commit to QMS Ledger**.
+PDF intake and quality-risk decisions remain out of scope.
+
 ## Prerequisites
 
 - Docker Desktop with Docker Compose, or
@@ -65,6 +70,13 @@ source-faithful values such as `March 2026` and `Not Provided` are preserved.
 - `POST /api/complaints` commits a complaint and returns HTTP 201.
 - `GET /api/complaints?page=1&page_size=20` lists newest complaints first.
 - `GET /api/complaints/{id}` retrieves a committed record.
+- `POST /api/complaints/process-text` extracts a draft from pasted complaint text.
+
+Text processing requires `GROQ_API_KEY`. `GROQ_MODEL` remains configurable and the
+default uses Groq strict JSON Schema output. `MAX_TEXT_INPUT_LENGTH` defaults to 20,000.
+Provider authentication, timeout, rate-limit, malformed-output, and availability
+failures use the standard API error contract. The default test suite uses fake
+providers; run real smoke tests explicitly with `RUN_GROQ_SMOKE=1`.
 
 The safe Thunder Client export is under `docs/thunder-client/`.
 

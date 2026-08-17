@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core.exceptions import ApplicationError
+
 
 class ErrorDetail(BaseModel):
     code: str
@@ -19,6 +21,21 @@ class ErrorResponse(BaseModel):
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(ApplicationError)
+    async def application_error_handler(
+        _request: Request, exc: ApplicationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": {
+                    "code": exc.code,
+                    "message": exc.message,
+                    "details": None,
+                }
+            },
+        )
+
     @app.exception_handler(StarletteHTTPException)
     async def http_error_handler(
         _request: Request, exc: StarletteHTTPException

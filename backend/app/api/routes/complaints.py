@@ -3,10 +3,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.dependencies import get_complaint_service
+from app.api.dependencies import get_complaint_service, get_text_processing_service
 from app.core.errors import ErrorResponse
 from app.schemas import ComplaintCreate, ComplaintResponse, PaginatedComplaintResponse
+from app.schemas.extraction import ProcessTextRequest, ProcessTextResponse
 from app.services.complaints import ComplaintNotFoundError, ComplaintService
+from app.services.text_processing import TextComplaintProcessingService
 
 router = APIRouter(prefix="/api/complaints", tags=["complaints"])
 
@@ -31,6 +33,26 @@ async def list_complaints(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> PaginatedComplaintResponse:
     return await service.list(page, page_size)
+
+
+@router.post(
+    "/process-text",
+    response_model=ProcessTextResponse,
+    responses={
+        422: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+        504: {"model": ErrorResponse},
+    },
+)
+async def process_complaint_text(
+    payload: ProcessTextRequest,
+    service: Annotated[
+        TextComplaintProcessingService, Depends(get_text_processing_service)
+    ],
+) -> ProcessTextResponse:
+    return await service.process(payload.text)
 
 
 @router.get(

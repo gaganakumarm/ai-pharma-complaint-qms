@@ -1,11 +1,12 @@
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database import Database, get_database
 from app.services import ComplaintService
+from app.services.text_processing import TextComplaintProcessingService
 
 
 async def get_session(
@@ -19,3 +20,7 @@ def get_complaint_service(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ComplaintService:
     return ComplaintService(session)
+
+
+def get_text_processing_service(request: Request) -> TextComplaintProcessingService:
+    return request.app.state.text_processing_service  # type: ignore[no-any-return]

@@ -1,5 +1,9 @@
 import { apiClient } from '../../shared/api/client'
-import type { ComplaintDraft, ComplaintRecord } from './types'
+import type {
+  ComplaintDraft,
+  ComplaintRecord,
+  ProcessTextResponse,
+} from './types'
 
 export interface PaginatedComplaints {
   items: Array<
@@ -57,5 +61,13 @@ export async function listComplaints(page = 1, pageSize = 20) {
   const response = await apiClient.get<PaginatedComplaints>('/api/complaints', {
     params: { page, page_size: pageSize },
   })
+  return response.data
+}
+
+export async function processComplaintText(text: string) {
+  const response = await apiClient.post<ProcessTextResponse>(
+    '/api/complaints/process-text',
+    { text },
+  )
   return response.data
 }

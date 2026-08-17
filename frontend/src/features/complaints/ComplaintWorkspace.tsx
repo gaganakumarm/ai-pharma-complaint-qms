@@ -5,7 +5,9 @@ import { useForm } from 'react-hook-form'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import {
   commitComplaintDraft,
+  processTextComplaint,
   resetComplaintDraft,
+  updateCopilotInput,
   updateDraftField,
 } from './complaintSlice'
 import { complaintFormSchema, type ComplaintFormValues } from './schema'
@@ -26,7 +28,17 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function ComplaintWorkspace() {
   const dispatch = useAppDispatch()
   const complaint = useAppSelector((state) => state.complaint)
-  const { draft, requestStatus, savedRecord, error } = complaint
+  const {
+    draft,
+    requestStatus,
+    savedRecord,
+    error,
+    copilotInput,
+    conversation,
+    processingStatus,
+    processingError,
+    warnings,
+  } = complaint
   const {
     register,
     handleSubmit,
@@ -65,15 +77,17 @@ export function ComplaintWorkspace() {
       </p>
     ) : null
   const status =
-    requestStatus === 'saving'
-      ? 'Saving'
-      : requestStatus === 'succeeded'
-        ? 'Committed'
-        : requestStatus === 'failed'
-          ? 'Error'
-          : isValid
-            ? 'Ready to Commit'
-            : 'Pending Triage'
+    processingStatus === 'processing'
+      ? 'Processing'
+      : requestStatus === 'saving'
+        ? 'Saving'
+        : requestStatus === 'succeeded'
+          ? 'Committed'
+          : requestStatus === 'failed'
+            ? 'Error'
+            : isValid
+              ? 'Ready to Commit'
+              : 'Pending Triage'
   const onSubmit = () => {
     if (requestStatus !== 'saving' && requestStatus !== 'succeeded')
       void dispatch(commitComplaintDraft(draft))
@@ -81,6 +95,11 @@ export function ComplaintWorkspace() {
   const resetForm = () => {
     dispatch(resetComplaintDraft())
     reset()
+  }
+  const processText = () => {
+    if (copilotInput.trim() && processingStatus !== 'processing') {
+      void dispatch(processTextComplaint(copilotInput))
+    }
   }
 
   return (
@@ -248,8 +267,97 @@ export function ComplaintWorkspace() {
           <p className="text-xs font-semibold uppercase tracking-widest text-teal-300">
             AIVOA Copilot
           </p>
-          <h2 className="mt-2 text-xl font-semibold">Review summary</h2>
+          <h2 className="mt-2 text-xl font-semibold">
+            Text &amp; email intake
+          </h2>
         </div>
+        <p className="text-sm leading-6 text-slate-300">
+          Paste complaint text or an email. PDF upload is coming in the next
+          module.
+        </p>
+        {conversation.length > 0 && (
+          <ol
+            aria-label="Copilot conversation"
+            className="max-h-64 space-y-3 overflow-y-auto"
+          >
+            {conversation.map((message) => (
+              <li
+                key={message.id}
+                className={
+                  message.role === 'user'
+                    ? 'ml-8 rounded-xl bg-teal-700 p-3 text-sm'
+                    : 'mr-8 rounded-xl bg-white/10 p-3 text-sm'
+                }
+              >
+                <span className="sr-only">
+                  {message.role === 'user' ? 'You' : 'AIVOA Copilot'}:{' '}
+                </span>
+                {message.content}
+              </li>
+            ))}
+          </ol>
+        )}
+        <label className="block text-sm font-medium text-slate-200">
+          Complaint text or email
+          <textarea
+            rows={7}
+            value={copilotInput}
+            onChange={(event) =>
+              dispatch(updateCopilotInput(event.target.value))
+            }
+            className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-800 p-3 text-sm text-white outline-none focus:border-teal-400"
+          />
+        </label>
+        {processingStatus === 'processing' && (
+          <div
+            role="status"
+            aria-label="Processing complaint"
+            className="rounded-xl bg-white/10 p-4 text-sm"
+          >
+            <p className="font-semibold text-teal-300">Processing complaint</p>
+            <ul className="mt-2 space-y-1 text-slate-300">
+              <li>Reading complaint</li>
+              <li>Extracting product and batch information</li>
+              <li>Validating extracted details</li>
+              <li>Populating complaint form</li>
+            </ul>
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div className="rounded-xl bg-amber-400/10 p-4 text-sm text-amber-200">
+            <p className="font-semibold">Needs information</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {processingError && (
+          <div
+            role="alert"
+            className="rounded-xl bg-red-400/10 p-4 text-sm text-red-200"
+          >
+            <p>{processingError}. Your text and form values were preserved.</p>
+            <button
+              type="button"
+              onClick={processText}
+              className="mt-3 rounded-lg border border-red-300 px-3 py-1 font-semibold"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={processText}
+          disabled={!copilotInput.trim() || processingStatus === 'processing'}
+          className="w-full rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {processingStatus === 'processing'
+            ? 'Processing…'
+            : 'Process Complaint'}
+        </button>
         {savedRecord ? (
           <div className="rounded-xl bg-white/10 p-4">
             <p className="text-xs text-slate-300">Complaint number</p>

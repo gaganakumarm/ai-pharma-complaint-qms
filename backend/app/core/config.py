@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         default_factory=lambda: [AnyHttpUrl("http://localhost:5173")]
     )
     max_upload_size_mb: int = Field(default=10, gt=0)
+    max_text_input_length: int = Field(default=20000, ge=1000, le=100000)
 
 
 @lru_cache

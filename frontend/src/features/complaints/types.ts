@@ -45,3 +45,34 @@ export interface ComplaintRecord {
   created_at: string
   updated_at: string
 }
+
+export interface ExtractedComplaint {
+  complaint_source: string | null
+  customer_name: string | null
+  product_type: ProductType | null
+  product_name: string | null
+  product_strength_grade: string | null
+  batch_lot_number: string | null
+  affected_quantity: string | null
+  manufacturing_date: string | null
+  expiry_retest_date: string | null
+  originating_site_block: string | null
+  impacted_non_product_materials: string | null
+  complaint_description: string | null
+}
+
+export interface ProcessTextResponse {
+  source_type: 'TEXT'
+  input_length: number
+  extracted_complaint: ExtractedComplaint
+  warnings: string[]
+  assistant_message: string
+  status: 'PROCESSED'
+  model: string
+}
+
+export interface ConversationMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+}
