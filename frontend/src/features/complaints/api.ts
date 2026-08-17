@@ -4,6 +4,8 @@ import type {
   ComplaintRecord,
   ProcessTextResponse,
   ProcessDocumentResponse,
+  ComplaintQualityAssessment,
+  ComplaintCorrectionResponse,
 } from './types'
 
 export interface PaginatedComplaints {
@@ -24,6 +26,38 @@ export interface PaginatedComplaints {
   page_size: number
   total: number
   total_pages: number
+}
+
+export async function correctComplaint(
+  draft: ComplaintDraft,
+  assessment: ComplaintQualityAssessment,
+  instruction: string,
+) {
+  const response = await apiClient.post<ComplaintCorrectionResponse>(
+    '/api/complaints/correct',
+    {
+      current_complaint: {
+        complaint_source: optional(draft.complaintSource),
+        customer_name: optional(draft.customerName),
+        product_type: draft.productType,
+        product_name: optional(draft.productName),
+        product_strength_grade: optional(draft.productStrengthGrade),
+        batch_lot_number: optional(draft.batchLotNumber),
+        affected_quantity: optional(draft.affectedQuantity),
+        manufacturing_date: optional(draft.manufacturingDate),
+        expiry_retest_date: optional(draft.expiryRetestDate),
+        originating_site_block: optional(draft.originatingSiteBlock),
+        impacted_non_product_materials: optional(
+          draft.impactedNonProductMaterials,
+        ),
+        complaint_category: optional(draft.complaintCategory),
+        complaint_description: optional(draft.complaintDescription),
+      },
+      instruction,
+      current_quality_assessment: assessment,
+    },
+  )
+  return response.data
 }
 
 const optional = (value: string) => value.trim() || null

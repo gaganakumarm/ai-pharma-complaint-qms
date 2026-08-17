@@ -36,6 +36,14 @@ IMPORTANT_FIELDS = {
 }
 
 
+def build_extraction_warnings(complaint: Any) -> list[str]:
+    return [
+        warning
+        for field, warning in IMPORTANT_FIELDS.items()
+        if getattr(complaint, field) is None
+    ]
+
+
 def normalize_text(raw_text: str, maximum_length: int) -> str:
     normalized = re.sub(r"[ \t]+", " ", raw_text.strip())
     normalized = re.sub(r"[ \t]*\n[ \t]*", "\n", normalized)
@@ -78,11 +86,7 @@ def build_complaint_graph(
             extraction = ExtractedComplaint.model_validate(state["provider_payload"])
         except Exception as exc:
             raise MalformedProviderResponseError from exc
-        warnings = [
-            warning
-            for field, warning in IMPORTANT_FIELDS.items()
-            if getattr(extraction, field) is None
-        ]
+        warnings = build_extraction_warnings(extraction)
         return {
             "extracted_complaint": extraction,
             "validation_warnings": warnings,

@@ -1,5 +1,11 @@
 # Database and API Specification
 
+Sprint 5 adds `POST /api/complaints/correct`. It accepts the current correctable
+draft, a bounded instruction, and current assessment, and returns `APPLIED`,
+`NO_CHANGES`, or `CLARIFICATION_REQUIRED` with the validated patch and complete draft.
+It performs no database reads or writes; explicit complaint creation remains the only
+commit operation.
+
 ## 1. Database overview
 
 PostgreSQL stores reviewed complaints committed to the QMS ledger. Draft extraction and correction operations remain outside persistence until the user explicitly commits. SQLAlchemy provides asynchronous access, and Alembic controls schema versions.

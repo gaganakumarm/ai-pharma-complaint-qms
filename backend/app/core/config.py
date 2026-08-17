@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     max_pdf_pages: int = Field(default=50, gt=0, le=500)
     max_pdf_text_length: int = Field(default=20000, ge=1000, le=100000)
     max_text_input_length: int = Field(default=20000, ge=1000, le=100000)
+    max_correction_instruction_length: int = Field(default=2000, ge=100, le=10000)
 
 
 @lru_cache

@@ -4,12 +4,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.ai.correction_graph import build_correction_graph
 from app.ai.graph import build_complaint_graph
 from app.ai.providers import GroqComplaintExtractionProvider
 from app.api.routes import complaints_router, system_router
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.infrastructure.database import Database
+from app.services.correction_processing import ComplaintCorrectionService
 from app.services.documents import DocumentComplaintProcessingService, PdfTextExtractor
 from app.services.text_processing import TextComplaintProcessingService
 
@@ -26,6 +28,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         graph = build_complaint_graph(provider, app_settings.max_text_input_length)
         text_service = TextComplaintProcessingService(graph, provider)
         application.state.text_processing_service = text_service
+        correction_graph = build_correction_graph(
+            provider, app_settings.max_correction_instruction_length
+        )
+        application.state.correction_service = ComplaintCorrectionService(
+            correction_graph, provider
+        )
         application.state.document_processing_service = (
             DocumentComplaintProcessingService(
                 text_service=text_service,

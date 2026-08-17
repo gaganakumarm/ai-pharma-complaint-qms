@@ -114,3 +114,24 @@ export interface ConversationMessage {
   role: 'user' | 'assistant'
   content: string
 }
+
+export type CorrectionField = keyof ExtractedComplaint | 'complaint_category'
+
+export interface CorrectableComplaint extends ExtractedComplaint {
+  complaint_category: string | null
+}
+
+export interface ComplaintCorrectionResponse {
+  patch: {
+    updates: { field: CorrectionField; value: string | null }[]
+    clarification_required: boolean
+    clarification_question: string | null
+  }
+  updated_complaint: CorrectableComplaint
+  changed_fields: CorrectionField[]
+  warnings: string[]
+  quality_assessment: ComplaintQualityAssessment
+  assistant_message: string
+  status: 'APPLIED' | 'CLARIFICATION_REQUIRED' | 'NO_CHANGES'
+  model: string
+}

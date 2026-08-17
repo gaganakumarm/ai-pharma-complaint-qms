@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database import Database, get_database
 from app.services import ComplaintService
+from app.services.correction_processing import ComplaintCorrectionService
 from app.services.documents import DocumentComplaintProcessingService
 from app.services.text_processing import TextComplaintProcessingService
 
@@ -31,3 +32,7 @@ def get_document_processing_service(
     request: Request,
 ) -> DocumentComplaintProcessingService:
     return request.app.state.document_processing_service  # type: ignore[no-any-return]
+
+
+def get_correction_service(request: Request) -> ComplaintCorrectionService:
+    return request.app.state.correction_service  # type: ignore[no-any-return]

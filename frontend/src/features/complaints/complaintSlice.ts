@@ -4,6 +4,7 @@ import {
   commitComplaint,
   processComplaintDocument,
   processComplaintText,
+  correctComplaint,
 } from './api'
 import type {
   ComplaintDraft,
@@ -57,6 +58,12 @@ export interface ComplaintState {
   documentError: string | null
   documentWarnings: string[]
   qualityAssessment: ComplaintQualityAssessment | null
+  correctionInstruction: string
+  correctionStatus:
+    'idle' | 'processing' | 'succeeded' | 'clarification_required' | 'failed'
+  correctionError: string | null
+  changedFields: string[]
+  clarificationQuestion: string | null
 }
 
 const initialState: ComplaintState = {
@@ -76,7 +83,39 @@ const initialState: ComplaintState = {
   documentError: null,
   documentWarnings: [],
   qualityAssessment: null,
+  correctionInstruction: '',
+  correctionStatus: 'idle',
+  correctionError: null,
+  changedFields: [],
+  clarificationQuestion: null,
 }
+
+export const applyCorrection = createAsyncThunk(
+  'complaint/correct',
+  async (instruction: string, { getState, rejectWithValue }) => {
+    const state = (getState() as { complaint: ComplaintState }).complaint
+    if (!state.qualityAssessment)
+      return rejectWithValue('Process a complaint first')
+    try {
+      return await correctComplaint(
+        state.draft,
+        state.qualityAssessment,
+        instruction,
+      )
+    } catch (error) {
+      return rejectWithValue(
+        typeof error === 'object' && error !== null && 'message' in error
+          ? String(error.message)
+          : 'Unable to apply correction',
+      )
+    }
+  },
+  {
+    condition: (_instruction, { getState }) =>
+      (getState() as { complaint: ComplaintState }).complaint
+        .correctionStatus !== 'processing',
+  },
+)
 
 function applyAssessment(
   state: ComplaintState,
@@ -88,6 +127,17 @@ function applyAssessment(
   state.draft.suggestedSeverity = assessment.suggested_severity
   state.draft.initialRiskAssessment = assessment.initial_risk_assessment
   state.draft.suggestedNextAction = assessment.suggested_next_action
+}
+
+function beginNewIntake(state: ComplaintState) {
+  state.correctionInstruction = ''
+  state.correctionStatus = 'idle'
+  state.correctionError = null
+  state.changedFields = []
+  state.clarificationQuestion = null
+  state.requestStatus = 'idle'
+  state.savedRecord = null
+  state.error = null
 }
 
 export const processDocumentComplaint = createAsyncThunk(
@@ -191,6 +241,10 @@ const complaintSlice = createSlice({
       state.copilotInput = action.payload
       state.processingError = null
     },
+    updateCorrectionInstruction: (state, action: { payload: string }) => {
+      state.correctionInstruction = action.payload
+      state.correctionError = null
+    },
     selectDocument: (state, action: { payload: SelectedDocument }) => {
       state.selectedDocument = action.payload
       state.documentStatus = 'selected'
@@ -224,6 +278,7 @@ const complaintSlice = createSlice({
         )
       })
       .addCase(processTextComplaint.pending, (state) => {
+        beginNewIntake(state)
         state.processingStatus = 'processing'
         state.processingError = null
         state.warnings = []
@@ -263,6 +318,7 @@ const complaintSlice = createSlice({
         )
       })
       .addCase(processDocumentComplaint.pending, (state) => {
+        beginNewIntake(state)
         state.documentStatus = 'uploading'
         state.documentError = null
         state.documentWarnings = []
@@ -300,6 +356,51 @@ const complaintSlice = createSlice({
             'Unable to process PDF complaint',
         )
       })
+      .addCase(applyCorrection.pending, (state) => {
+        state.correctionStatus = 'processing'
+        state.correctionError = null
+      })
+      .addCase(applyCorrection.fulfilled, (state, action) => {
+        const response = action.payload
+        state.correctionStatus =
+          response.status === 'CLARIFICATION_REQUIRED'
+            ? 'clarification_required'
+            : 'succeeded'
+        state.changedFields = response.changed_fields
+        state.clarificationQuestion = response.patch.clarification_question
+        state.warnings = response.warnings
+        state.conversation.push(
+          {
+            id: `${Date.now()}-correction-user`,
+            role: 'user',
+            content: state.correctionInstruction,
+          },
+          {
+            id: `${Date.now()}-correction-assistant`,
+            role: 'assistant',
+            content: response.assistant_message,
+          },
+        )
+        for (const [source, target] of Object.entries(extractionMap) as Array<
+          [keyof ExtractedComplaint, keyof ComplaintDraft]
+        >) {
+          ;(state.draft[target] as string) =
+            response.updated_complaint[source] ?? ''
+        }
+        state.draft.complaintCategory =
+          response.updated_complaint.complaint_category ?? ''
+        applyAssessment(state, response.quality_assessment)
+        state.correctionInstruction = ''
+      })
+      .addCase(applyCorrection.rejected, (state, action) => {
+        if (action.meta.condition) return
+        state.correctionStatus = 'failed'
+        state.correctionError = String(
+          action.payload ??
+            action.error.message ??
+            'Unable to apply correction',
+        )
+      })
   },
 })
 
@@ -308,6 +409,7 @@ export const {
   resetComplaintDraft,
   selectDocument,
   updateCopilotInput,
+  updateCorrectionInstruction,
   updateDraftField,
 } = complaintSlice.actions
 export const complaintReducer = complaintSlice.reducer

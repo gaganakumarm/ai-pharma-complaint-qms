@@ -1,5 +1,9 @@
 # Testing Strategy and Sprint Record
 
+Sprint 5 adds correction schema, merge, graph, API, Redux, and Copilot regression
+coverage. Acceptance remains pending until all automated, real-provider, Docker, and
+manual gates recorded in the final report have completed.
+
 ## 1. Purpose
 
 This document defines the project’s testing approach, quality gates, sprint sequence, and evolving verification record. The strategy remains stable; sprint status and exact results are updated after each accepted sprint.

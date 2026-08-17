@@ -1,5 +1,11 @@
 # AI-Powered Pharmaceutical Customer Complaint Management System
 
+Sprint 5 adds non-persistent conversational correction. After text or PDF intake,
+`POST /api/complaints/correct` interprets a bounded instruction into a strict
+allowlisted patch, validates and merges it copy-on-write, recalculates warnings, and
+refreshes quality assessment when relevant. Clarification and no-op outcomes preserve
+the draft. Ledger commitment remains a separate explicit user action.
+
 Sprint 1 provides the complaint ledger and explicit commit workflow. Sprint 2 adds
 non-persistent text and email extraction through a compiled LangGraph
 workflow and the official Groq SDK. Extracted values populate the editable Redux draft

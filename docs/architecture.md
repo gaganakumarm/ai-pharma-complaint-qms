@@ -1,5 +1,11 @@
 # System Architecture
 
+Sprint 5 uses a separate compiled correction LangGraph: normalize, extract strict
+patch, validate, deterministic merge, recalculate warnings, conditionally reassess,
+validate assessment, and prepare response. Routes remain HTTP-only, the provider
+interprets language without merging, and repositories remain persistence-only. The
+in-memory response is atomic and the correction endpoint never writes the ledger.
+
 ## 1. Overview
 
 The AI-Powered Pharmaceutical Customer Complaint Management System uses a modular full-stack architecture. React and Redux manage the user workspace and complaint draft. FastAPI exposes validated use cases. Application services coordinate AI and persistence operations. LangGraph orchestrates structured complaint processing through Groq. PostgreSQL stores only explicitly committed complaints.

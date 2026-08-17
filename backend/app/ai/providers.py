@@ -14,8 +14,10 @@ from pydantic import ValidationError
 
 from app.ai.prompts import (
     ASSESSMENT_SYSTEM_PROMPT,
+    CORRECTION_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     assessment_user_prompt,
+    correction_user_prompt,
     user_prompt,
 )
 from app.core.exceptions import (
@@ -27,6 +29,7 @@ from app.core.exceptions import (
     ProviderUnavailableError,
 )
 from app.schemas.assessment import ComplaintQualityAssessment
+from app.schemas.correction import ComplaintCorrectionPatch, CorrectableComplaint
 from app.schemas.extraction import ExtractedComplaint
 
 
@@ -36,7 +39,11 @@ class ComplaintExtractionProvider(Protocol):
     async def extract(self, text: str) -> Mapping[str, Any]: ...
 
     async def assess_complaint(
-        self, complaint: ExtractedComplaint
+        self, complaint: ExtractedComplaint | CorrectableComplaint
+    ) -> Mapping[str, Any]: ...
+
+    async def extract_correction(
+        self, current_complaint: CorrectableComplaint, instruction: str
     ) -> Mapping[str, Any]: ...
 
 
@@ -61,7 +68,7 @@ class GroqComplaintExtractionProvider:
         )
 
     async def assess_complaint(
-        self, complaint: ExtractedComplaint
+        self, complaint: ExtractedComplaint | CorrectableComplaint
     ) -> Mapping[str, Any]:
         schema = ComplaintQualityAssessment.model_json_schema()
         schema["required"] = list(schema["properties"])
@@ -73,13 +80,28 @@ class GroqComplaintExtractionProvider:
             ComplaintQualityAssessment,
         )
 
+    async def extract_correction(
+        self, current_complaint: CorrectableComplaint, instruction: str
+    ) -> Mapping[str, Any]:
+        schema = ComplaintCorrectionPatch.model_json_schema()
+        schema["required"] = list(schema["properties"])
+        return await self._structured_output(
+            CORRECTION_SYSTEM_PROMPT,
+            correction_user_prompt(current_complaint.model_dump_json(), instruction),
+            schema,
+            "pharmaceutical_complaint_correction",
+            ComplaintCorrectionPatch,
+        )
+
     async def _structured_output(
         self,
         system_prompt: str,
         prompt: str,
         schema: dict[str, Any],
         schema_name: str,
-        response_model: type[ExtractedComplaint] | type[ComplaintQualityAssessment],
+        response_model: type[ExtractedComplaint]
+        | type[ComplaintQualityAssessment]
+        | type[ComplaintCorrectionPatch],
     ) -> Mapping[str, Any]:
         if not self.api_key.strip():
             raise MissingAIConfigurationError
@@ -115,7 +137,19 @@ class GroqComplaintExtractionProvider:
                 raise ProviderTimeoutError from exc
             except RateLimitError as exc:
                 raise ProviderRateLimitError from exc
-            except (APIConnectionError, APIStatusError) as exc:
+            except APIStatusError as exc:
+                error_body = getattr(exc, "body", None)
+                is_failed_generation = (
+                    exc.status_code == 400
+                    and isinstance(error_body, dict)
+                    and "failed_generation" in str(error_body)
+                )
+                if is_failed_generation:
+                    if attempt == 1:
+                        raise MalformedProviderResponseError from exc
+                    continue
+                raise ProviderUnavailableError from exc
+            except APIConnectionError as exc:
                 raise ProviderUnavailableError from exc
             finally:
                 close = getattr(client, "close", None)
