@@ -1,8 +1,7 @@
 # Testing Strategy and Sprint Record
 
-Sprint 5 adds correction schema, merge, graph, API, Redux, and Copilot regression
-coverage. Acceptance remains pending until all automated, real-provider, Docker, and
-manual gates recorded in the final report have completed.
+Final status: Sprints 0–4 and Sprint 6 are **PASSED**. Sprint 5 remains **PASSED WITH
+EXTERNAL PROVIDER LIMITATION**.
 
 ## 1. Purpose
 
@@ -201,29 +200,24 @@ NEEDS_INFORMATION handling, trusted disclaimer, editable fields, textless-PDF dr
 preservation, explicit commit, non-persistence before commit, and restart retrieval.
 Docker health, PostgreSQL readiness, frontend HTTP, and logs passed.
 
-### Sprint 5 — Conversational corrections
+### Sprint 5 — Conversational corrections — PASSED WITH EXTERNAL PROVIDER LIMITATION
 
 **Objective:** Allowlisted field patches that preserve unrelated data.
 
-**Gate:** Demo correction cases pass, relevant checks recalculate, and malformed corrections cannot damage the draft.
+The complete deterministic correction workflow passed, including clarification,
+protected fields, clearing, controlled failure/retry, explicit commit, and restart
+retrieval. Seven earlier real-Groq correction scenarios passed. Later attempts to run
+one uninterrupted real-provider browser workflow were blocked by Groq HTTP 429, so
+that later full browser run is not claimed as passed.
 
-### Sprint 6 — Selected bonuses
+### Sprint 6 — Selected bonuses — PASSED
 
 **Objective:** Completeness, duplicate detection, and root-cause/CAPA recommendations.
 
-**Gate:** All three features work in API/FDF scenarios and display appropriate uncertainty/review language.
-
-### Sprint 7 — Hardening
-
-**Objective:** Full regression, robustness, security, accessibility, and failure recovery.
-
-**Gate:** All backend/frontend/integration/E2E/build/Docker checks pass with no secrets or critical dependency findings.
-
-### Sprint 8 — Submission
-
-**Objective:** Final README, screenshots, sample documents, product demo, and code walkthrough.
-
-**Gate:** Clean-environment setup works and every submission link/file is verified before the deadline.
+Completeness, deterministic duplicate detection, and advisory RCA/CAPA passed unit,
+PostgreSQL, frontend, Docker, and complete deterministic browser verification. One
+fictional FDF and one fictional API RCA/CAPA real-provider smoke check passed strict
+schema and human-review validation.
 
 ## 9. Requirement tracking
 
@@ -236,24 +230,24 @@ Docker health, PostgreSQL readiness, frontend HTTP, and logs passed.
 | Text/email intake | Mandatory | 2 | Implemented |
 | PDF intake | Mandatory | 3 | Implemented |
 | Category/risk/next action | Mandatory | 4 | Implemented |
-| Conversational correction | Mandatory | 5 | Update after Sprint 5 |
-| Completeness checker | Bonus | 6 | Update after Sprint 6 |
-| Duplicate detection | Bonus | 6 | Update after Sprint 6 |
-| Root-cause/CAPA | Bonus | 6 | Update after Sprint 6 |
+| Conversational correction | Mandatory | 5 | Passed with external provider limitation |
+| Completeness checker | Bonus | 6 | Implemented and passed |
+| Duplicate detection | Bonus | 6 | Implemented and passed |
+| Root-cause/CAPA | Bonus | 6 | Implemented and passed |
 
 ## 10. Final submission checklist
 
 - [ ] Repository is clean and pushed
 - [ ] No credentials or private `.env` files are committed
-- [ ] Migrations work on a fresh PostgreSQL database
-- [ ] All automated and integration tests pass
-- [ ] Docker Compose starts all healthy services
-- [ ] API and FDF text scenarios pass with real Groq
-- [ ] PDF scenario passes
-- [ ] Corrections preserve unrelated fields
-- [ ] All three bonus features pass
-- [ ] README setup works from a clean environment
-- [ ] Thunder Client collection contains no secrets
+- [x] Migrations work on a fresh PostgreSQL database
+- [x] All automated and integration tests pass
+- [x] Docker Compose starts all healthy services
+- [x] Controlled API and FDF Groq smoke evidence is recorded
+- [x] PDF scenario passes with deterministic acceptance
+- [x] Corrections preserve unrelated fields
+- [x] All three bonus features pass
+- [x] README provides clean-environment PowerShell setup
+- [x] Thunder Client collection contains no secrets
 - [ ] Product demonstration video is recorded
 - [ ] Code walkthrough video is recorded
 - [ ] Submission form is completed before the deadline
@@ -279,3 +273,21 @@ HTTP 429 is recorded as an external-provider limitation and is never looped.
 
 Acceptance status: **PASSED**. The complete deterministic browser workflow and both
 single-call fictional FDF/API RCA-CAPA provider smoke checks passed on 2026-08-18.
+
+## Final release review
+
+The 2026-08-18 release gate passed Ruff, Ruff formatting, strict MyPy (39
+application source files), 107 default tests with 28 database/provider skips, and
+115 isolated-PostgreSQL tests with 20 provider skips. Alembic downgrade to base,
+upgrade to head, and an idempotent re-upgrade passed.
+
+Frontend ESLint, Prettier, TypeScript, 21 Vitest tests, production build, and both
+npm audit modes passed with zero vulnerabilities. Docker Compose validation and
+rebuild passed; PostgreSQL and backend were healthy, the frontend returned HTTP
+200, and both health endpoints returned HTTP 200.
+
+One final deterministic browser workflow processed fictional FDF and API PDFs,
+recalculated corrections, verified completeness, duplicate, and RCA/CAPA panels,
+and committed exactly one FDF record: `CMP-2026-000021`. The ledger moved from
+20 to 21 only at explicit commit. The committed record was retrieved after a
+backend restart. No real-provider request was made during this release review.

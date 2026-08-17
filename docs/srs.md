@@ -1,8 +1,8 @@
 # Software Requirements Specification
 
-Implementation status: Sprint 5 conversational complaint-source corrections are
-implemented. Formal completeness scoring, duplicate detection, RCA/CAPA,
-authentication, OCR, and autonomous quality decisions remain out of scope.
+Implementation status: Sprints 0–6 are implemented. Sprint 5 is **PASSED WITH
+EXTERNAL PROVIDER LIMITATION** and Sprint 6 is **PASSED**. Authentication, OCR, and
+autonomous quality decisions remain outside assignment scope.
 
 ## AI-Powered Pharmaceutical Customer Complaint Management System
 

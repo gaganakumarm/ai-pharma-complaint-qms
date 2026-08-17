@@ -1,167 +1,217 @@
 # AI-Powered Pharmaceutical Customer Complaint Management System
 
-Sprint 5 adds non-persistent conversational correction. After text or PDF intake,
-`POST /api/complaints/correct` interprets a bounded instruction into a strict
-allowlisted patch, validates and merges it copy-on-write, recalculates warnings, and
-refreshes quality assessment when relevant. Clarification and no-op outcomes preserve
-the draft. Ledger commitment remains a separate explicit user action.
+An assignment-scale complaint-intake and decision-support application for pharmaceutical QA teams working with Active Pharmaceutical Ingredients (APIs) and Finished Dosage Forms (FDFs).
 
-Sprint 1 provides the complaint ledger and explicit commit workflow. Sprint 2 adds
-non-persistent text and email extraction through a compiled LangGraph
-workflow and the official Groq SDK. Extracted values populate the editable Redux draft
-but are never committed until the user explicitly selects **Commit to QMS Ledger**.
-Sprint 3 adds bounded PDF upload and basic selectable-text extraction with PyMuPDF.
-PDF and pasted-text intake converge on the same AI workflow. OCR and quality-risk
-assessment were outside Sprint 3.
+## Problem and solution
 
-Sprint 4 adds a structured initial pharmaceutical quality and risk assessment to both
-text and PDF processing. It supplies an editable category, structured description,
-suggested severity and rationale, initial risk assessment, next QA action, and explicit
-information gaps. Every result displays this trusted warning:
+Complaint evidence commonly arrives as email-style text or PDF reports. Manual transcription is slow and inconsistent. This application extracts a reviewable draft, highlights missing information and possible duplicates, provides advisory quality/RCA/CAPA support, accepts conversational corrections, and commits only after explicit human action.
 
-> AI-generated initial assessment for QA review. Final severity, investigation, batch
-> disposition, CAPA, and market actions must be determined and approved by authorised
-> quality personnel.
+It is a demonstration system, not a validated production QMS. Authorised QA personnel remain responsible for investigation, severity, CAPA, disposition, recall, and regulatory decisions.
 
-Processing remains non-persistent; only an explicit reviewed commit writes to the ledger.
+## Main capabilities
+
+- Manual, text/email-style, and selectable-text PDF intake
+- API, FDF, and unknown-product contexts
+- Structured extraction into an editable React form
+- Category, severity, risk, and next-action recommendations
+- Allowlisted conversational corrections with atomic reassessment
+- Deterministic completeness and possible-duplicate checks
+- Advisory root-cause and corrective/preventive action recommendations
+- Explicit PostgreSQL commit, pagination, and UUID retrieval
+- Controlled errors, retry-safe drafts, Docker health checks, and CI
+
+## Architecture and stack
+
+The React/TypeScript frontend uses Redux Toolkit, React Hook Form, Zod, Axios, Tailwind CSS, and Inter. FastAPI coordinates strict Pydantic contracts, services, async SQLAlchemy repositories, PostgreSQL, and Alembic. LangGraph sequences normalization, Groq extraction, validation, quality assessment, deterministic completeness, RCA/CAPA generation, and response preparation. PDF and text intake share this graph; corrections use a separate allowlisted patch graph.
+
+Groq SDK behavior stays in the provider adapter, repositories contain only database access, and routes contain HTTP concerns. Processing never persists automatically.
+
+```text
+backend/app/
+  ai/                 LangGraph workflows, prompts, Groq adapter
+  api/                Routes and dependencies
+  schemas/            Strict request/response contracts
+  services/           Processing and deterministic business logic
+  repositories/       PostgreSQL access
+  infrastructure/     SQLAlchemy engine, sessions, models
+frontend/src/
+  app/                 Redux store and hooks
+  features/complaints Intake workflow, API adapter, panels, tests
+docs/                  Architecture, SRS, API, testing, submission
+sample-data/           Fictional FDF, API, and textless PDFs
+```
+
+See [architecture.md](docs/architecture.md) and [requirements traceability](docs/requirements-traceability.md).
 
 ## Prerequisites
 
 - Docker Desktop with Docker Compose, or
 - Python 3.11+, Node.js 22+, npm, and PostgreSQL 16
 
-## Run with Docker
+## Environment setup
 
-```bash
-cp .env.example .env
-docker compose up --build
+```powershell
+Copy-Item .env.example .env
 ```
 
-Open the frontend at <http://localhost:5173>. Operational endpoints are available at
-<http://localhost:8000/health> and <http://localhost:8000/ready>; API documentation is
-at <http://localhost:8000/docs>.
+Configure the ignored local file:
 
-The bundled Docker database credentials are development-only defaults. Set
-`GROQ_API_KEY` to enable text or PDF extraction. `GROQ_MODEL` remains environment-configurable and
-defaults to the supported Groq production model `openai/gpt-oss-120b`.
+```env
+GROQ_API_KEY=replace_with_your_groq_api_key
+GROQ_MODEL=openai/gpt-oss-120b
+```
 
-## Run locally
+Retired assignment model identifiers were replaced by this configurable supported model. Change `GROQ_MODEL` when provider availability changes; never commit `.env`.
 
-Start PostgreSQL and copy `.env.example` to `.env`. From `backend`:
+## Docker startup
 
-```bash
+```powershell
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps
+```
+
+- Frontend: <http://localhost:5173>
+- API docs: <http://localhost:8000/docs>
+- Liveness: <http://localhost:8000/health>
+- PostgreSQL readiness: <http://localhost:8000/ready>
+
+Docker database credentials are development-only defaults.
+
+## Local development
+
+Backend PowerShell session:
+
+```powershell
+Set-Location backend
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-From `frontend` in a second terminal:
+Frontend PowerShell session:
 
-```bash
+```powershell
+Set-Location frontend
 npm install
 npm run dev
 ```
 
 ## Database migrations
 
-From `backend`, with `DATABASE_URL` configured:
-
-```bash
-alembic upgrade head
-alembic revision --autogenerate -m "describe change"
+```powershell
+Set-Location backend
+.\.venv\Scripts\alembic.exe upgrade head
 ```
 
-The backend container runs `alembic upgrade head` before Uvicorn starts. This command
-is idempotent, so restarts preserve the PostgreSQL volume and safely check migrations.
+The backend container runs this before startup. The complaints table uses a sequence-backed complaint number and indexes for complaint number, batch, lowercased product name, and creation time.
 
-Manual commits require customer name, product name, batch/lot number, complaint
-category, and complaint description. Pharmaceutical dates remain text so partial or
-source-faithful values such as `March 2026` and `Not Provided` are preserved.
+## API summary
 
-## API
+- `POST /api/complaints/process-text` — unsaved text draft
+- `POST /api/complaints/process-document` — unsaved text-based PDF draft
+- `POST /api/complaints/correct` — unsaved allowlisted correction
+- `POST /api/complaints/check-duplicates` — non-persistent duplicate check
+- `POST /api/complaints` — explicit commit
+- `GET /api/complaints` — newest-first pagination
+- `GET /api/complaints/{complaint_id}` — committed record
+- `GET /health` and `GET /ready` — liveness and database readiness
 
-- `POST /api/complaints` commits a complaint and returns HTTP 201.
-- `GET /api/complaints?page=1&page_size=20` lists newest complaints first.
-- `GET /api/complaints/{id}` retrieves a committed record.
-- `POST /api/complaints/process-text` extracts a draft from pasted complaint text.
-- `POST /api/complaints/process-document` accepts multipart field `file` containing
-  a text-based PDF and returns an unsaved draft plus safe document metadata.
+Processing responses include quality assessment, completeness, possible duplicates, and advisory RCA/CAPA. They do not expose prompts, raw provider output, PDF bytes, full PDF text, credentials, or database internals.
 
-Both processing responses include `quality_assessment`. If assessment fails, the API
-returns a controlled error and does not return a partially trusted assessment; the
-frontend preserves the existing draft for retry.
+## Example workflow and sample data
 
-Text processing requires `GROQ_API_KEY`. `GROQ_MODEL` remains configurable and the
-default uses Groq strict JSON Schema output. `MAX_TEXT_INPUT_LENGTH` defaults to 20,000.
-PDF uploads default to 10 MB, 50 pages, and 20,000 extracted characters through
-`MAX_UPLOAD_SIZE_MB`, `MAX_PDF_PAGES`, and `MAX_PDF_TEXT_LENGTH`. Files are checked by
-extension, MIME type, `%PDF-` signature, readability, encryption state, page count, and
-selectable text before AI processing. Scanned/textless PDFs return a controlled error;
-OCR is not included.
-Provider authentication, timeout, rate-limit, malformed-output, and availability
-failures use the standard API error contract. The default test suite uses fake
-providers; run real smoke tests explicitly with `RUN_GROQ_SMOKE=1`.
+1. Upload `sample-data/fictional-fdf-complaint.pdf`.
+2. Review extracted fields, quality guidance, completeness, duplicates, and RCA/CAPA.
+3. Correct the fictional batch and quantity conversationally.
+4. Review recalculated results and explicitly commit.
+5. Retrieve the UUID-backed record.
+6. Process `fictional-api-complaint.pdf` and confirm no automatic persistence.
 
-Recreate the fictional demonstration PDFs with:
+All samples are fictional. Regenerate them with:
 
-```bash
-python sample-data/generate_pdf_samples.py
+```powershell
+python sample-data\generate_pdf_samples.py
 ```
 
-The safe Thunder Client export is under `docs/thunder-client/`.
+`fictional-textless-complaint.pdf` tests the controlled no-readable-text path. OCR is intentionally not included or required.
 
-## PostgreSQL integration tests
+## Testing
 
-```bash
+```powershell
+Set-Location backend
+.\.venv\Scripts\ruff.exe check app tests
+.\.venv\Scripts\ruff.exe format --check app tests
+.\.venv\Scripts\mypy.exe app
+.\.venv\Scripts\pytest.exe -q
+```
+
+PostgreSQL integration:
+
+```powershell
+Set-Location ..
 docker compose --profile test up -d postgres_test
-cd backend
-set TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/pharma_qms_test
-set DATABASE_URL=%TEST_DATABASE_URL%
-alembic downgrade base
-alembic upgrade head
-pytest
+Set-Location backend
+$env:TEST_DATABASE_URL='postgresql+asyncpg://postgres:postgres@localhost:5433/pharma_qms_test'
+$env:DATABASE_URL=$env:TEST_DATABASE_URL
+.\.venv\Scripts\alembic.exe downgrade base
+.\.venv\Scripts\alembic.exe upgrade head
+.\.venv\Scripts\pytest.exe -q
 ```
 
-The test database uses a separate temporary container and never touches development
-data.
+Frontend:
 
-## Quality checks
-
-```bash
-cd backend
-ruff check .
-ruff format --check .
-mypy app tests
-pytest
-
-cd ../frontend
+```powershell
+Set-Location ..\frontend
+npm audit
+npm audit --omit=dev
 npm run lint
 npm run format
 npm run typecheck
 npm test
 npm run build
-
-cd ..
-docker compose config
 ```
 
-GitHub Actions runs these backend and frontend checks on every push and pull request.
-See [docs/architecture.md](docs/architecture.md) for the package responsibilities.
+## Thunder Client, screenshots, and demo
 
-## Sprint 6 decision support
+Import collections under `docs/thunder-client/`; select PDF files manually for multipart requests. They contain fictional data and no credentials.
 
-Text/PDF processing and corrections now return three review-only enhancements:
+- [Screenshot capture checklist](docs/screenshots/README.md)
+- [Submission summary](docs/submission.md)
+- Demo video: **add a reviewer-accessible link before submission**
 
-- deterministic completeness against the five manual-commit fields;
-- deterministic, bounded duplicate candidates from committed PostgreSQL records;
-- AI-assisted root-cause hypotheses and proposed corrective/preventive actions.
+No binary screenshot placeholders are committed.
 
-These results never commit, merge, reject, suppress, release, recall, or dispose of a
-complaint or batch. Duplicate results are possible matches only. RCA/CAPA output is
-unapproved investigation support requiring authorised QA review. Manual edits update
-completeness locally and mark duplicate/RCA-CAPA results as potentially outdated.
+## Security, privacy, and human review
 
-`POST /api/complaints/check-duplicates` performs a non-persistent focused duplicate
-check. Candidate retrieval is limited to 50 records and responses contain at most five
-ranked matches. See `docs/database-and-api.md` for the contract and thresholds.
+- Secrets remain in ignored environment files and backend variables.
+- Inputs, corrections, uploads, and AI structures are bounded and validated.
+- Complaint content is delimited as untrusted evidence.
+- Authentication and rate-limit failures are not automatically retried.
+- Duplicate results are possible matches, never confirmed duplicates.
+- RCA/CAPA is unapproved investigation support with a trusted disclaimer.
+- Use only fictional or appropriately controlled data in this assignment system.
+
+## Known limitations
+
+- No authentication, roles, electronic signatures, validated audit trail, or deployment
+- No OCR, mailbox integration, embeddings, or semantic duplicate search
+- No final regulatory approval, confirmed root cause, autonomous recall, batch disposition, release/rejection, investigation closure, or approved CAPA
+- Lexical duplicate scoring and model recommendations require human QA review
+- Groq availability and quota remain external dependencies
+
+## Assignment status
+
+- Sprint 0: PASSED
+- Sprint 1: PASSED
+- Sprint 2: PASSED
+- Sprint 3: PASSED
+- Sprint 4: PASSED
+- Sprint 5: PASSED WITH EXTERNAL PROVIDER LIMITATION
+- Sprint 6: PASSED
+
+Sprint 5's deterministic workflow and earlier real correction scenarios passed. A later uninterrupted real-browser rerun was blocked by Groq HTTP 429 and was not represented as successful. Sprint 6's fictional FDF and API RCA/CAPA smoke checks passed.
+
+No repository license is included.

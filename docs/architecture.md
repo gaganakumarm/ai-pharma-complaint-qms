@@ -134,11 +134,17 @@ flowchart TD
     X --> V["Validate extraction"]
     V --> R["Assess complaint quality and risk"]
     R --> A["Validate quality assessment"]
-    A --> P["Prepare response"]
+    A --> C["Assess deterministic completeness"]
+    C --> G["Generate advisory RCA/CAPA"]
+    G --> S["Validate RCA/CAPA safety schema"]
+    S --> P["Prepare response"]
 ```
 
-Conversational corrections are planned for Sprint 5. Root-cause/CAPA suggestions and
-duplicate detection remain planned Sprint 6 work and are not part of the current graph.
+Conversational corrections use a separate compiled graph that normalizes the
+instruction, extracts and validates an allowlisted patch, applies it atomically, and
+conditionally reassesses quality, completeness, and advisory RCA/CAPA. Duplicate
+detection is a bounded database-backed service invoked around graph results rather
+than an AI graph node.
 
 ### Graph state
 

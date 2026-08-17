@@ -180,7 +180,7 @@ Illustrative response:
   "page": 1,
   "page_size": 20,
   "total": 0,
-  "pages": 0
+  "total_pages": 0
 }
 ```
 
@@ -293,7 +293,8 @@ Error categories include validation, not found, unsupported file, file too large
 Schema changes use new Alembic revisions. Applied migrations are not edited retrospectively. Upgrades must work on an empty database and an existing persistent volume; relevant downgrade paths are verified during development.
 ## Sprint 6 processing enhancements
 
-`POST /api/complaints/process-text`, `POST /process-document`, and `POST /correct`
+`POST /api/complaints/process-text`, `POST /api/complaints/process-document`, and
+`POST /api/complaints/correct`
 include `completeness_assessment`, `possible_duplicate_matches`, and
 `rca_capa_recommendations`. Existing response fields remain unchanged.
 
