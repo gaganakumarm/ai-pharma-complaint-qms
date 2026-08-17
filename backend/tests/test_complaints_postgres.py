@@ -7,8 +7,14 @@ import asyncpg
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.ai.graph import build_complaint_graph
+from app.api.dependencies import get_document_processing_service
 from app.core.config import Settings
 from app.main import create_app
+from app.services.documents import DocumentComplaintProcessingService, PdfTextExtractor
+from app.services.text_processing import TextComplaintProcessingService
+from tests.pdf_factory import make_pdf
+from tests.test_text_processing import FakeProvider, extraction
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not configured"
@@ -34,6 +40,21 @@ def valid_payload(suffix: str = "1") -> dict[str, str]:
 async def pg_client() -> AsyncIterator[AsyncClient]:
     settings = Settings(database_url=os.environ["TEST_DATABASE_URL"])
     app = create_app(settings)
+    provider = FakeProvider(
+        extraction(
+            product_type="FDF",
+            product_name="Amoxicillin Capsules",
+            batch_lot_number="PG-PDF-1",
+            complaint_description="Discoloration complaint.",
+        )
+    )
+    text_service = TextComplaintProcessingService(
+        build_complaint_graph(provider, 2000), provider
+    )
+    document_service = DocumentComplaintProcessingService(
+        text_service, PdfTextExtractor(), 1_000_000, 1, 10, 2000
+    )
+    app.dependency_overrides[get_document_processing_service] = lambda: document_service
     async with app.router.lifespan_context(app):
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
@@ -118,4 +139,24 @@ async def test_database_constraint_failure_leaves_no_partial_record(
                 uuid.uuid4(),
             )
     after = await pg_connection.fetchval("SELECT count(*) FROM complaints")
+    assert after == before
+
+
+async def test_process_document_does_not_create_ledger_row(
+    pg_client: AsyncClient, pg_connection: asyncpg.Connection
+) -> None:
+    before = await pg_connection.fetchval("SELECT count(*) FROM complaints")
+    response = await pg_client.post(
+        "/api/complaints/process-document",
+        files={
+            "file": (
+                "fictional.pdf",
+                make_pdf("FDF batch PG-PDF-1 discoloration complaint"),
+                "application/pdf",
+            )
+        },
+    )
+    after = await pg_connection.fetchval("SELECT count(*) FROM complaints")
+    assert response.status_code == 200
+    assert response.json()["source_type"] == "PDF"
     assert after == before

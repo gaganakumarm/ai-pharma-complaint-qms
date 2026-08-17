@@ -1,14 +1,12 @@
 # AI-Powered Pharmaceutical Customer Complaint Management System
 
-Sprint 1 provides a non-AI complaint ledger vertical slice: a validated Redux-backed
-React form, FastAPI use-case and repository layers, and PostgreSQL persistence with
-concurrency-safe human-readable complaint numbers. AI features remain intentionally
-unimplemented.
-
-Sprint 2 adds non-persistent text and email extraction through a compiled LangGraph
+Sprint 1 provides the complaint ledger and explicit commit workflow. Sprint 2 adds
+non-persistent text and email extraction through a compiled LangGraph
 workflow and the official Groq SDK. Extracted values populate the editable Redux draft
 but are never committed until the user explicitly selects **Commit to QMS Ledger**.
-PDF intake and quality-risk decisions remain out of scope.
+Sprint 3 adds bounded PDF upload and basic selectable-text extraction with PyMuPDF.
+PDF and pasted-text intake converge on the same AI workflow. OCR and quality-risk
+decisions remain out of scope.
 
 ## Prerequisites
 
@@ -27,8 +25,7 @@ Open the frontend at <http://localhost:5173>. Operational endpoints are availabl
 at <http://localhost:8000/docs>.
 
 The bundled Docker database credentials are development-only defaults. Set
-`GROQ_API_KEY` only when a later sprint introduces an approved integration; Sprint 0
-does not read or transmit it. `GROQ_MODEL` remains environment-configurable and
+`GROQ_API_KEY` to enable text or PDF extraction. `GROQ_MODEL` remains environment-configurable and
 defaults to the supported Groq production model `openai/gpt-oss-120b`.
 
 ## Run locally
@@ -71,12 +68,25 @@ source-faithful values such as `March 2026` and `Not Provided` are preserved.
 - `GET /api/complaints?page=1&page_size=20` lists newest complaints first.
 - `GET /api/complaints/{id}` retrieves a committed record.
 - `POST /api/complaints/process-text` extracts a draft from pasted complaint text.
+- `POST /api/complaints/process-document` accepts multipart field `file` containing
+  a text-based PDF and returns an unsaved draft plus safe document metadata.
 
 Text processing requires `GROQ_API_KEY`. `GROQ_MODEL` remains configurable and the
 default uses Groq strict JSON Schema output. `MAX_TEXT_INPUT_LENGTH` defaults to 20,000.
+PDF uploads default to 10 MB, 50 pages, and 20,000 extracted characters through
+`MAX_UPLOAD_SIZE_MB`, `MAX_PDF_PAGES`, and `MAX_PDF_TEXT_LENGTH`. Files are checked by
+extension, MIME type, `%PDF-` signature, readability, encryption state, page count, and
+selectable text before AI processing. Scanned/textless PDFs return a controlled error;
+OCR is not included.
 Provider authentication, timeout, rate-limit, malformed-output, and availability
 failures use the standard API error contract. The default test suite uses fake
 providers; run real smoke tests explicitly with `RUN_GROQ_SMOKE=1`.
+
+Recreate the fictional demonstration PDFs with:
+
+```bash
+python sample-data/generate_pdf_samples.py
+```
 
 The safe Thunder Client export is under `docs/thunder-client/`.
 

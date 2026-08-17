@@ -3,6 +3,7 @@ import type {
   ComplaintDraft,
   ComplaintRecord,
   ProcessTextResponse,
+  ProcessDocumentResponse,
 } from './types'
 
 export interface PaginatedComplaints {
@@ -27,9 +28,12 @@ export interface PaginatedComplaints {
 
 const optional = (value: string) => value.trim() || null
 
-export async function commitComplaint(draft: ComplaintDraft) {
+export async function commitComplaint(
+  draft: ComplaintDraft,
+  sourceType: 'MANUAL' | 'TEXT' | 'PDF' = 'MANUAL',
+) {
   const response = await apiClient.post<ComplaintRecord>('/api/complaints', {
-    source_type: 'MANUAL',
+    source_type: sourceType,
     complaint_source: optional(draft.complaintSource),
     customer_name: draft.customerName.trim(),
     product_type: draft.productType,
@@ -68,6 +72,16 @@ export async function processComplaintText(text: string) {
   const response = await apiClient.post<ProcessTextResponse>(
     '/api/complaints/process-text',
     { text },
+  )
+  return response.data
+}
+
+export async function processComplaintDocument(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await apiClient.post<ProcessDocumentResponse>(
+    '/api/complaints/process-document',
+    formData,
   )
   return response.data
 }

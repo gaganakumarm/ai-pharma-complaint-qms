@@ -1,17 +1,23 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import type { ChangeEvent, ReactNode } from 'react'
+import { useState } from 'react'
+import type { ChangeEvent, DragEvent, ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import {
   commitComplaintDraft,
+  processDocumentComplaint,
   processTextComplaint,
+  removeDocument,
   resetComplaintDraft,
+  selectDocument,
   updateCopilotInput,
   updateDraftField,
 } from './complaintSlice'
 import { complaintFormSchema, type ComplaintFormValues } from './schema'
 import type { ComplaintDraft } from './types'
+
+const MAX_UPLOAD_SIZE_MB = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB ?? 10)
 
 const inputClass =
   'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100'
@@ -26,6 +32,10 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export function ComplaintWorkspace() {
+  const [documentFile, setDocumentFile] = useState<File | null>(null)
+  const [documentSelectionError, setDocumentSelectionError] = useState<
+    string | null
+  >(null)
   const dispatch = useAppDispatch()
   const complaint = useAppSelector((state) => state.complaint)
   const {
@@ -38,6 +48,10 @@ export function ComplaintWorkspace() {
     processingStatus,
     processingError,
     warnings,
+    selectedDocument,
+    documentStatus,
+    documentError,
+    documentWarnings,
   } = complaint
   const {
     register,
@@ -77,7 +91,7 @@ export function ComplaintWorkspace() {
       </p>
     ) : null
   const status =
-    processingStatus === 'processing'
+    processingStatus === 'processing' || documentStatus === 'uploading'
       ? 'Processing'
       : requestStatus === 'saving'
         ? 'Saving'
@@ -94,11 +108,49 @@ export function ComplaintWorkspace() {
   }
   const resetForm = () => {
     dispatch(resetComplaintDraft())
+    setDocumentFile(null)
+    setDocumentSelectionError(null)
     reset()
   }
   const processText = () => {
     if (copilotInput.trim() && processingStatus !== 'processing') {
       void dispatch(processTextComplaint(copilotInput))
+    }
+  }
+  const chooseDocument = (file: File | undefined) => {
+    if (!file) return
+    if (
+      !file.name.toLowerCase().endsWith('.pdf') ||
+      file.type !== 'application/pdf'
+    ) {
+      setDocumentSelectionError('Only PDF documents are supported')
+      return
+    }
+    if (file.size > MAX_UPLOAD_SIZE_MB * 1024 * 1024) {
+      setDocumentSelectionError(`PDF must not exceed ${MAX_UPLOAD_SIZE_MB} MB`)
+      return
+    }
+    setDocumentSelectionError(null)
+    setDocumentFile(file)
+    dispatch(
+      selectDocument({ name: file.name, size: file.size, type: file.type }),
+    )
+  }
+  const dropDocument = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    chooseDocument(event.dataTransfer.files[0])
+  }
+  const clearDocument = () => {
+    setDocumentFile(null)
+    setDocumentSelectionError(null)
+    dispatch(removeDocument())
+  }
+  const processDocument = () => {
+    if (
+      documentFile &&
+      !['uploading', 'extracting', 'analysing'].includes(documentStatus)
+    ) {
+      void dispatch(processDocumentComplaint(documentFile))
     }
   }
 
@@ -267,14 +319,105 @@ export function ComplaintWorkspace() {
           <p className="text-xs font-semibold uppercase tracking-widest text-teal-300">
             AIVOA Copilot
           </p>
-          <h2 className="mt-2 text-xl font-semibold">
-            Text &amp; email intake
-          </h2>
+          <h2 className="mt-2 text-xl font-semibold">Complaint intake</h2>
         </div>
         <p className="text-sm leading-6 text-slate-300">
-          Paste complaint text or an email. PDF upload is coming in the next
-          module.
+          Paste complaint text or upload a text-based PDF. OCR is not supported.
         </p>
+        <section aria-labelledby="pdf-upload-heading" className="space-y-3">
+          <h3 id="pdf-upload-heading" className="font-semibold text-teal-300">
+            PDF complaint
+          </h3>
+          <div
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={dropDocument}
+            className="rounded-xl border border-dashed border-slate-500 p-4 text-center"
+          >
+            <label
+              htmlFor="complaint-pdf"
+              className="cursor-pointer text-sm font-semibold text-white underline decoration-teal-400 underline-offset-4"
+            >
+              Choose a PDF or drag it here
+            </label>
+            <input
+              id="complaint-pdf"
+              type="file"
+              accept="application/pdf,.pdf"
+              className="sr-only"
+              onChange={(event) => chooseDocument(event.target.files?.[0])}
+            />
+            <p className="mt-2 text-xs text-slate-400">
+              PDF only, maximum {MAX_UPLOAD_SIZE_MB} MB. Selectable text is
+              required.
+            </p>
+          </div>
+          {selectedDocument && (
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-white/10 p-3 text-sm">
+              <span className="min-w-0 truncate">{selectedDocument.name}</span>
+              <button
+                type="button"
+                onClick={clearDocument}
+                disabled={documentStatus === 'uploading'}
+                className="font-semibold text-teal-300 disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+          {documentStatus === 'uploading' && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="rounded-xl bg-white/10 p-4 text-sm"
+            >
+              <p className="font-semibold text-teal-300">Processing PDF</p>
+              <ul className="mt-2 space-y-1 text-slate-300">
+                <li>Uploading document safely</li>
+                <li>Extracting selectable text</li>
+                <li>Analysing complaint details</li>
+                <li>Populating complaint form</li>
+              </ul>
+            </div>
+          )}
+          {(documentSelectionError || documentError) && (
+            <div
+              role="alert"
+              className="rounded-xl bg-red-400/10 p-3 text-sm text-red-200"
+            >
+              <p>
+                {documentSelectionError ?? documentError} Your draft and
+                selected document were preserved.
+              </p>
+              {documentError && (
+                <button
+                  type="button"
+                  onClick={processDocument}
+                  className="mt-2 rounded-lg border border-red-300 px-3 py-1 font-semibold"
+                >
+                  Retry PDF
+                </button>
+              )}
+            </div>
+          )}
+          {documentWarnings.length > 0 && (
+            <div className="rounded-xl bg-amber-400/10 p-3 text-sm text-amber-200">
+              <p className="font-semibold">PDF needs information</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {documentWarnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={processDocument}
+            disabled={!documentFile || documentStatus === 'uploading'}
+            className="w-full rounded-lg border border-teal-400 px-4 py-2 text-sm font-semibold text-teal-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {documentStatus === 'uploading' ? 'Processing PDF…' : 'Process PDF'}
+          </button>
+        </section>
         {conversation.length > 0 && (
           <ol
             aria-label="Copilot conversation"

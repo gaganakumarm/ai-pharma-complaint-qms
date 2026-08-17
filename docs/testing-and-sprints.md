@@ -163,17 +163,26 @@ Recorded evidence:
 - `CMP-2026-000002` remained retrievable after backend restart
 - Static checks, production build, audits, and Docker health passed
 
-### Sprint 2 — Text/email AI intake
+### Sprint 2 — Text/email AI intake — PASSED
 
 **Objective:** LangGraph + Groq structured extraction and form population.
 
-**Gate:** API/FDF/incomplete real smoke tests pass; automated fake-provider graph/API/frontend tests pass; no draft is automatically persisted.
+Recorded evidence: backend Ruff/format/MyPy passed; 37 tests passed and 4 live tests
+were skipped by default; all 4 real Groq smoke cases passed; frontend lint, format,
+typing, 10 tests, build, and both npm audits passed; Docker health/readiness and browser
+commit/restart verification passed; ledger count was unchanged by text processing.
 
-### Sprint 3 — PDF intake
+### Sprint 3 — PDF intake — PASSED
 
 **Objective:** File validation and basic selectable-text extraction using the same graph.
 
-**Gate:** Valid sample PDFs populate the form; invalid and textless documents fail safely; production OCR is not added.
+Recorded evidence: Ruff and format passed; strict MyPy passed for all 46 backend source
+and test files; 58 tests passed with 7 credential-gated live tests skipped; all 3 real
+PDF/Groq smoke tests passed. Frontend lint, format, typing, 14 tests, production build,
+and both npm audits passed. FDF/API browser extraction, controlled textless failure,
+explicit PDF commit, backend restart retrieval, Docker health, and PostgreSQL readiness
+passed. PDF processing was proven not to change the ledger count. Production OCR was
+not added.
 
 ### Sprint 4 — Mandatory quality assessment
 
@@ -212,9 +221,9 @@ Recorded evidence:
 | React, Redux, Inter UI | Mandatory | 0–1 | Implemented |
 | FastAPI and PostgreSQL | Mandatory | 0–1 | Implemented |
 | Manual form and ledger | Mandatory workflow | 1 | Implemented |
-| Groq and LangGraph | Mandatory | 2 | Update after Sprint 2 |
-| Text/email intake | Mandatory | 2 | Update after Sprint 2 |
-| PDF intake | Mandatory | 3 | Update after Sprint 3 |
+| Groq and LangGraph | Mandatory | 2 | Implemented |
+| Text/email intake | Mandatory | 2 | Implemented |
+| PDF intake | Mandatory | 3 | Implemented |
 | Category/risk/next action | Mandatory | 4 | Update after Sprint 4 |
 | Conversational correction | Mandatory | 5 | Update after Sprint 5 |
 | Completeness checker | Bonus | 6 | Update after Sprint 6 |

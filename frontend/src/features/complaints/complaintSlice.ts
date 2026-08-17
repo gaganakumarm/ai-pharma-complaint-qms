@@ -1,11 +1,16 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 
-import { commitComplaint, processComplaintText } from './api'
+import {
+  commitComplaint,
+  processComplaintDocument,
+  processComplaintText,
+} from './api'
 import type {
   ComplaintDraft,
   ComplaintRecord,
   ConversationMessage,
   ExtractedComplaint,
+  SelectedDocument,
 } from './types'
 
 export const initialDraft: ComplaintDraft = {
@@ -29,6 +34,7 @@ export const initialDraft: ComplaintDraft = {
 
 export interface ComplaintState {
   draft: ComplaintDraft
+  sourceType: 'MANUAL' | 'TEXT' | 'PDF'
   requestStatus: 'idle' | 'saving' | 'succeeded' | 'failed'
   savedRecord: ComplaintRecord | null
   error: string | null
@@ -38,10 +44,22 @@ export interface ComplaintState {
   processingError: string | null
   warnings: string[]
   lastProcessedInputLength: number | null
+  selectedDocument: SelectedDocument | null
+  documentStatus:
+    | 'idle'
+    | 'selected'
+    | 'uploading'
+    | 'extracting'
+    | 'analysing'
+    | 'succeeded'
+    | 'failed'
+  documentError: string | null
+  documentWarnings: string[]
 }
 
 const initialState: ComplaintState = {
   draft: initialDraft,
+  sourceType: 'MANUAL',
   requestStatus: 'idle',
   savedRecord: null,
   error: null,
@@ -51,7 +69,33 @@ const initialState: ComplaintState = {
   processingError: null,
   warnings: [],
   lastProcessedInputLength: null,
+  selectedDocument: null,
+  documentStatus: 'idle',
+  documentError: null,
+  documentWarnings: [],
 }
+
+export const processDocumentComplaint = createAsyncThunk(
+  'complaint/processDocument',
+  async (file: File, { rejectWithValue }) => {
+    try {
+      return await processComplaintDocument(file)
+    } catch (error) {
+      const message =
+        typeof error === 'object' && error !== null && 'message' in error
+          ? String(error.message)
+          : 'Unable to process PDF complaint'
+      return rejectWithValue(message)
+    }
+  },
+  {
+    condition: (_file, { getState }) => {
+      const status = (getState() as { complaint: ComplaintState }).complaint
+        .documentStatus
+      return !['uploading', 'extracting', 'analysing'].includes(status)
+    },
+  },
+)
 
 export const processTextComplaint = createAsyncThunk(
   'complaint/processText',
@@ -90,9 +134,11 @@ const extractionMap: Record<keyof ExtractedComplaint, keyof ComplaintDraft> = {
 
 export const commitComplaintDraft = createAsyncThunk(
   'complaint/commit',
-  async (draft: ComplaintDraft, { rejectWithValue }) => {
+  async (draft: ComplaintDraft, { rejectWithValue, getState }) => {
     try {
-      return await commitComplaint(draft)
+      const sourceType = (getState() as { complaint: ComplaintState }).complaint
+        .sourceType
+      return await commitComplaint(draft, sourceType)
     } catch (error) {
       const message =
         typeof error === 'object' && error !== null && 'message' in error
@@ -130,6 +176,18 @@ const complaintSlice = createSlice({
       state.copilotInput = action.payload
       state.processingError = null
     },
+    selectDocument: (state, action: { payload: SelectedDocument }) => {
+      state.selectedDocument = action.payload
+      state.documentStatus = 'selected'
+      state.documentError = null
+      state.documentWarnings = []
+    },
+    removeDocument: (state) => {
+      state.selectedDocument = null
+      state.documentStatus = 'idle'
+      state.documentError = null
+      state.documentWarnings = []
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -156,6 +214,7 @@ const complaintSlice = createSlice({
         state.warnings = []
       })
       .addCase(processTextComplaint.fulfilled, (state, action) => {
+        state.sourceType = 'TEXT'
         state.processingStatus = 'succeeded'
         state.lastProcessedInputLength = action.payload.input_length
         state.warnings = action.payload.warnings
@@ -187,9 +246,51 @@ const complaintSlice = createSlice({
             'Unable to process complaint text',
         )
       })
+      .addCase(processDocumentComplaint.pending, (state) => {
+        state.documentStatus = 'uploading'
+        state.documentError = null
+        state.documentWarnings = []
+      })
+      .addCase(processDocumentComplaint.fulfilled, (state, action) => {
+        state.sourceType = 'PDF'
+        state.documentStatus = 'succeeded'
+        state.documentWarnings = action.payload.warnings
+        state.conversation.push(
+          {
+            id: `${Date.now()}-pdf-user`,
+            role: 'user',
+            content: `Uploaded PDF: ${action.payload.document.filename}`,
+          },
+          {
+            id: `${Date.now()}-pdf-assistant`,
+            role: 'assistant',
+            content: action.payload.assistant_message,
+          },
+        )
+        for (const [source, target] of Object.entries(extractionMap) as Array<
+          [keyof ExtractedComplaint, keyof ComplaintDraft]
+        >) {
+          const value = action.payload.extracted_complaint[source]
+          if (value !== null) (state.draft[target] as string) = value
+        }
+      })
+      .addCase(processDocumentComplaint.rejected, (state, action) => {
+        if (action.meta.condition) return
+        state.documentStatus = 'failed'
+        state.documentError = String(
+          action.payload ??
+            action.error.message ??
+            'Unable to process PDF complaint',
+        )
+      })
   },
 })
 
-export const { resetComplaintDraft, updateCopilotInput, updateDraftField } =
-  complaintSlice.actions
+export const {
+  removeDocument,
+  resetComplaintDraft,
+  selectDocument,
+  updateCopilotInput,
+  updateDraftField,
+} = complaintSlice.actions
 export const complaintReducer = complaintSlice.reducer

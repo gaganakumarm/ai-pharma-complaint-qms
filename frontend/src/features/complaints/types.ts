@@ -23,7 +23,7 @@ export interface ComplaintDraft {
 export interface ComplaintRecord {
   id: string
   complaint_number: string
-  source_type: 'MANUAL'
+  source_type: 'MANUAL' | 'TEXT' | 'PDF'
   complaint_source: string | null
   customer_name: string
   product_type: ProductType
@@ -64,6 +64,29 @@ export interface ExtractedComplaint {
 export interface ProcessTextResponse {
   source_type: 'TEXT'
   input_length: number
+  extracted_complaint: ExtractedComplaint
+  warnings: string[]
+  assistant_message: string
+  status: 'PROCESSED'
+  model: string
+}
+
+export interface SelectedDocument {
+  name: string
+  size: number
+  type: string
+}
+
+export interface DocumentMetadata {
+  filename: string
+  content_type: string
+  page_count: number
+  character_count: number
+}
+
+export interface ProcessDocumentResponse {
+  source_type: 'PDF'
+  document: DocumentMetadata
   extracted_complaint: ExtractedComplaint
   warnings: string[]
   assistant_message: string

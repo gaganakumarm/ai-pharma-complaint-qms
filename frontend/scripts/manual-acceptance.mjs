@@ -1,5 +1,8 @@
+import path from 'node:path'
+
 import { chromium } from 'playwright-core'
 
+const samples = path.resolve('..', 'sample-data')
 const browser = await chromium.launch({
   executablePath:
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -8,43 +11,104 @@ const browser = await chromium.launch({
 
 try {
   const page = await browser.newPage()
-  page.setDefaultTimeout(30_000)
+  page.setDefaultTimeout(45_000)
   await page.goto('http://localhost:5173', { waitUntil: 'networkidle' })
-  const initialStatus = await page.getByRole('status').textContent()
+  const ledgerCount = async () =>
+    page.evaluate(async () => {
+      const response = await fetch(
+        'http://localhost:8000/api/complaints?page=1&page_size=1',
+      )
+      return (await response.json()).total
+    })
+
+  const initialCount = await ledgerCount()
   await page
-    .getByLabel('Complaint text or email')
-    .fill('Apollo Pharmacy reports cracked Paracetamol 500 mg tablets, batch FDF-42.')
-  await page.getByRole('button', { name: 'Process Complaint' }).click()
-  await page.getByLabel(/Product Name/).waitFor()
-  await page.getByLabel(/Product Name/).waitFor({ state: 'visible' })
+    .getByLabel('Choose a PDF or drag it here')
+    .setInputFiles(path.join(samples, 'fictional-fdf-complaint.pdf'))
+  await page.getByRole('button', { name: 'Process PDF' }).click()
+  await page.getByText('Extracting selectable text').waitFor()
   await page.waitForFunction(
-    () => document.querySelector('input[name="productName"]')?.value === 'Paracetamol',
+    () =>
+      document.querySelector('input[name="batchLotNumber"]')?.value ===
+      'AMX-FDF-2407',
   )
-  const extractedProductType = await page.getByLabel('Product Type').inputValue()
-  const extractedBatch = await page.getByLabel(/Batch\/Lot Number/).inputValue()
-  const affectedQuantity = await page.getByLabel('Affected Quantity').inputValue()
-  await page.getByLabel(/Complaint Category/).fill('Product quality')
+  const afterFdfProcessing = await ledgerCount()
+  const fdfProductType = await page.getByLabel('Product Type').inputValue()
+  const fdfBatch = await page.getByLabel(/Batch\/Lot Number/).inputValue()
+  await page.getByLabel(/Complaint Category/).fill('Product discoloration')
   await page.getByText('Ready to Commit', { exact: true }).waitFor()
-  const readyStatus = await page.getByRole('status').textContent()
-  const commitButton = page.getByRole('button', {
-    name: 'Commit to QMS Ledger',
-  })
-  await commitButton.click()
+  await page.getByRole('button', { name: 'Commit to QMS Ledger' }).click()
   await page.getByText('COMMITTED', { exact: true }).waitFor()
   const complaintNumber = await page
     .getByText(/^CMP-\d{4}-\d{6}$/)
     .textContent()
-  const duplicateSubmissionPrevented = await commitButton.isDisabled()
+  const committed = await page.evaluate(async (number) => {
+    const response = await fetch(
+      'http://localhost:8000/api/complaints?page=1&page_size=100',
+    )
+    const body = await response.json()
+    return body.items.find((item) => item.complaint_number === number)
+  }, complaintNumber)
+
+  await page.getByRole('button', { name: 'Reset Form' }).click()
+  await page
+    .getByLabel('Choose a PDF or drag it here')
+    .setInputFiles(path.join(samples, 'fictional-api-complaint.pdf'))
+  await page.getByRole('button', { name: 'Process PDF' }).click()
+  await page.waitForFunction(
+    () =>
+      document.querySelector('input[name="batchLotNumber"]')?.value ===
+      'MET-API-77A',
+  )
+  const apiProductType = await page.getByLabel('Product Type').inputValue()
+  const apiGrade = await page.getByLabel('Product Strength/Grade').inputValue()
+  const apiBatch = await page.getByLabel(/Batch\/Lot Number/).inputValue()
+  const apiQuantity = await page.getByLabel('Affected Quantity').inputValue()
+  const afterApiProcessing = await ledgerCount()
+
+  await page
+    .getByLabel('Choose a PDF or drag it here')
+    .setInputFiles(path.join(samples, 'fictional-textless-complaint.pdf'))
+  await page.getByRole('button', { name: 'Process PDF' }).click()
+  const textlessError = await page
+    .getByRole('alert')
+    .filter({ hasText: 'No readable text' })
+    .textContent()
+  const draftPreservedAfterTextless =
+    (await page.getByLabel(/Batch\/Lot Number/).inputValue()) === 'MET-API-77A'
+
+  await page.getByRole('button', { name: 'Reset Form' }).click()
+  await page
+    .getByLabel('Complaint text or email')
+    .fill('Paracetamol 500 mg FDF batch TEXT-REG-1 had cracked tablets.')
+  await page.getByRole('button', { name: 'Process Complaint' }).click()
+  await page.waitForFunction(
+    () =>
+      document.querySelector('input[name="batchLotNumber"]')?.value ===
+      'TEXT-REG-1',
+  )
+
   console.log(
     JSON.stringify({
-      initialStatus,
-      readyStatus,
-      finalStatus: 'COMMITTED',
+      initialCount,
+      afterFdfProcessing,
+      afterApiProcessing,
+      automaticPersistencePrevented:
+        initialCount === afterFdfProcessing &&
+        afterApiProcessing === initialCount + 1,
+      fdfProductType,
+      fdfBatch,
       complaintNumber,
-      extractedProductType,
-      extractedBatch,
-      affectedQuantity: affectedQuantity || null,
-      duplicateSubmissionPrevented,
+      complaintId: committed?.id,
+      apiProductType,
+      apiGrade,
+      apiBatch,
+      apiQuantity,
+      textlessError,
+      draftPreservedAfterTextless,
+      textRegressionBatch: await page
+        .getByLabel(/Batch\/Lot Number/)
+        .inputValue(),
     }),
   )
 } finally {

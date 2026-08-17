@@ -40,6 +40,8 @@ services:
       GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
       CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
       MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
+      MAX_PDF_PAGES: ${MAX_PDF_PAGES:-50}
+      MAX_PDF_TEXT_LENGTH: ${MAX_PDF_TEXT_LENGTH:-20000}
       MAX_TEXT_INPUT_LENGTH: ${MAX_TEXT_INPUT_LENGTH:-20000}
     ports:
       - "8000:8000"
@@ -57,6 +59,7 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: http://localhost:8000
+        VITE_MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
     ports:
       - "5173:80"
     depends_on:

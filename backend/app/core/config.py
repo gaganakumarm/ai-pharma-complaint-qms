@@ -22,6 +22,8 @@ class Settings(BaseSettings):
         default_factory=lambda: [AnyHttpUrl("http://localhost:5173")]
     )
     max_upload_size_mb: int = Field(default=10, gt=0)
+    max_pdf_pages: int = Field(default=50, gt=0, le=500)
+    max_pdf_text_length: int = Field(default=20000, ge=1000, le=100000)
     max_text_input_length: int = Field(default=20000, ge=1000, le=100000)
 
 

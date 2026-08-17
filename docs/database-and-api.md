@@ -218,7 +218,16 @@ Response includes source type, extracted complaint, warnings, status, assistant 
 
 ### POST `/api/complaints/process-document`
 
-Accepts multipart PDF upload, extracts readable text, and returns the same draft contract as text processing. Unsupported, oversized, corrupted, or textless PDFs return controlled errors. It does not commit.
+Accepts `multipart/form-data` with a required `file` field. The backend reads in bounded
+chunks, validates the PDF, extracts selectable text in page order, and sends that text
+through the same LangGraph workflow as `/process-text`.
+
+The response contains `source_type: "PDF"`, safe document metadata (`filename`, normalized
+content type, page count, and character count), the extracted draft, warnings, assistant
+message, processing status, and model identifier. It never contains PDF bytes or full raw
+text and does not commit a ledger record. Unsupported media returns 415, oversized uploads
+413, and invalid, encrypted, excessive-page, corrupt, or textless documents return a
+controlled 422 response.
 
 ### POST `/api/complaints/correct`
 

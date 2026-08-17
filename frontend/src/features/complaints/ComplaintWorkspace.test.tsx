@@ -1,20 +1,26 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppStore } from '../../app/store'
-import { commitComplaint, processComplaintText } from './api'
+import {
+  commitComplaint,
+  processComplaintDocument,
+  processComplaintText,
+} from './api'
 import { commitComplaintDraft, processTextComplaint } from './complaintSlice'
 import { ComplaintWorkspace } from './ComplaintWorkspace'
 import type { ComplaintRecord } from './types'
 
 vi.mock('./api', () => ({
   commitComplaint: vi.fn(),
+  processComplaintDocument: vi.fn(),
   processComplaintText: vi.fn(),
 }))
 const mockedCommit = vi.mocked(commitComplaint)
 const mockedProcess = vi.mocked(processComplaintText)
+const mockedProcessDocument = vi.mocked(processComplaintDocument)
 
 const savedRecord: ComplaintRecord = {
   id: '9bf66d1e-69cb-4e9c-ae66-ff74878d3666',
@@ -67,6 +73,7 @@ describe('ComplaintWorkspace', () => {
   beforeEach(() => {
     mockedCommit.mockReset()
     mockedProcess.mockReset()
+    mockedProcessDocument.mockReset()
   })
 
   it('renders the complete form and accessible validation', async () => {
@@ -301,5 +308,115 @@ describe('ComplaintWorkspace', () => {
       },
     })
     expect(await screen.findByText('Done.')).toBeInTheDocument()
+  })
+
+  it('selects, displays, and removes a PDF accessibly', async () => {
+    const user = userEvent.setup()
+    renderWorkspace()
+    const input = screen.getByLabelText('Choose a PDF or drag it here')
+    const pdf = new File(['%PDF-test'], 'complaint.PDF', {
+      type: 'application/pdf',
+    })
+    await user.upload(input, pdf)
+    expect(screen.getByText('complaint.PDF')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(screen.queryByText('complaint.PDF')).not.toBeInTheDocument()
+  })
+
+  it('rejects unsupported and oversized files before a request', async () => {
+    const user = userEvent.setup({ applyAccept: false })
+    renderWorkspace()
+    const input = screen.getByLabelText('Choose a PDF or drag it here')
+    await user.upload(
+      input,
+      new File(['plain'], 'complaint.txt', { type: 'text/plain' }),
+    )
+    expect(
+      screen.getByText(/Only PDF documents are supported/),
+    ).toBeInTheDocument()
+    const oversized = new File(
+      [new Uint8Array(10 * 1024 * 1024 + 1)],
+      'large.pdf',
+      { type: 'application/pdf' },
+    )
+    await user.upload(input, oversized)
+    expect(screen.getByText(/PDF must not exceed 10 MB/)).toBeInTheDocument()
+    expect(mockedProcessDocument).not.toHaveBeenCalled()
+  })
+
+  it('accepts a dropped PDF and populates fields without erasing values', async () => {
+    mockedProcessDocument.mockResolvedValue({
+      source_type: 'PDF',
+      document: {
+        filename: 'api.pdf',
+        content_type: 'application/pdf',
+        page_count: 1,
+        character_count: 100,
+      },
+      status: 'PROCESSED',
+      model: 'fake-model',
+      warnings: ['Affected quantity was not provided'],
+      assistant_message: 'Review the PDF draft.',
+      extracted_complaint: {
+        complaint_source: null,
+        customer_name: 'ABC Formulations Ltd.',
+        product_type: 'API',
+        product_name: 'Metformin Hydrochloride API',
+        product_strength_grade: 'IP/BP',
+        batch_lot_number: 'MET-API-77A',
+        affected_quantity: null,
+        manufacturing_date: null,
+        expiry_retest_date: null,
+        originating_site_block: null,
+        impacted_non_product_materials: null,
+        complaint_description: 'Foreign particles.',
+      },
+    })
+    const user = userEvent.setup()
+    renderWorkspace()
+    await user.type(screen.getByLabelText(/Affected Quantity/), 'Existing qty')
+    const pdf = new File(['%PDF-test'], 'api.pdf', { type: 'application/pdf' })
+    fireEvent.drop(
+      screen.getByText('Choose a PDF or drag it here').parentElement!,
+      {
+        dataTransfer: { files: [pdf] },
+      },
+    )
+    await user.click(screen.getByRole('button', { name: 'Process PDF' }))
+    expect(await screen.findByDisplayValue('MET-API-77A')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Affected Quantity/)).toHaveValue(
+      'Existing qty',
+    )
+    expect(screen.getByText('Review the PDF draft.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Affected quantity was not provided'),
+    ).toBeInTheDocument()
+  })
+
+  it('prevents duplicate PDF submissions and preserves retry context', async () => {
+    let rejectRequest: ((reason: Error) => void) | undefined
+    mockedProcessDocument.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRequest = reject
+        }),
+    )
+    const user = userEvent.setup()
+    renderWorkspace()
+    await user.upload(
+      screen.getByLabelText('Choose a PDF or drag it here'),
+      new File(['%PDF-test'], 'retry.pdf', { type: 'application/pdf' }),
+    )
+    const button = screen.getByRole('button', { name: 'Process PDF' })
+    await user.dblClick(button)
+    expect(
+      await screen.findByText('Extracting selectable text'),
+    ).toBeInTheDocument()
+    expect(mockedProcessDocument).toHaveBeenCalledTimes(1)
+    rejectRequest?.(new Error('PDF service unavailable'))
+    expect(
+      await screen.findByText(/PDF service unavailable/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('retry.pdf')).toBeInTheDocument()
   })
 })

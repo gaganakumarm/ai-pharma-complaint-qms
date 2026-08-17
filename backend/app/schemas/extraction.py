@@ -50,3 +50,20 @@ class ProcessTextResponse(BaseModel):
     assistant_message: str
     status: ProcessingStatus = ProcessingStatus.PROCESSED
     model: str
+
+
+class DocumentMetadata(BaseModel):
+    filename: str
+    content_type: str
+    page_count: int
+    character_count: int
+
+
+class ProcessDocumentResponse(BaseModel):
+    source_type: SourceType = SourceType.PDF
+    document: DocumentMetadata
+    extracted_complaint: ExtractedComplaint
+    warnings: list[str]
+    assistant_message: str
+    status: ProcessingStatus = ProcessingStatus.PROCESSED
+    model: str

@@ -1,13 +1,22 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
-from app.api.dependencies import get_complaint_service, get_text_processing_service
+from app.api.dependencies import (
+    get_complaint_service,
+    get_document_processing_service,
+    get_text_processing_service,
+)
 from app.core.errors import ErrorResponse
 from app.schemas import ComplaintCreate, ComplaintResponse, PaginatedComplaintResponse
-from app.schemas.extraction import ProcessTextRequest, ProcessTextResponse
+from app.schemas.extraction import (
+    ProcessDocumentResponse,
+    ProcessTextRequest,
+    ProcessTextResponse,
+)
 from app.services.complaints import ComplaintNotFoundError, ComplaintService
+from app.services.documents import DocumentComplaintProcessingService
 from app.services.text_processing import TextComplaintProcessingService
 
 router = APIRouter(prefix="/api/complaints", tags=["complaints"])
@@ -53,6 +62,29 @@ async def process_complaint_text(
     ],
 ) -> ProcessTextResponse:
     return await service.process(payload.text)
+
+
+@router.post(
+    "/process-document",
+    response_model=ProcessDocumentResponse,
+    responses={
+        413: {"model": ErrorResponse},
+        415: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+        504: {"model": ErrorResponse},
+    },
+)
+async def process_complaint_document(
+    file: Annotated[UploadFile, File(description="Text-based PDF complaint")],
+    service: Annotated[
+        DocumentComplaintProcessingService,
+        Depends(get_document_processing_service),
+    ],
+) -> ProcessDocumentResponse:
+    return await service.process(file)
 
 
 @router.get(

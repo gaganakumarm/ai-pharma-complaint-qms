@@ -10,11 +10,14 @@ class TextComplaintProcessingService:
         self.graph = graph
         self.provider = provider
 
-    async def process(self, text: str) -> ProcessTextResponse:
+    async def process(
+        self, text: str, source_type: SourceType = SourceType.TEXT
+    ) -> ProcessTextResponse:
         result = await self.graph.ainvoke(
-            {"raw_text": text, "source_type": SourceType.TEXT, "execution_trace": []}
+            {"raw_text": text, "source_type": source_type, "execution_trace": []}
         )
         return ProcessTextResponse(
+            source_type=source_type,
             input_length=len(result["normalized_text"]),
             extracted_complaint=result["extracted_complaint"],
             warnings=result["validation_warnings"],

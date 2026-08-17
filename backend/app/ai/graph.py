@@ -50,7 +50,7 @@ def build_complaint_graph(
     async def normalize_input(state: ComplaintGraphState) -> ComplaintGraphState:
         return {
             "normalized_text": normalize_text(state["raw_text"], maximum_length),
-            "source_type": SourceType.TEXT,
+            "source_type": state.get("source_type", SourceType.TEXT),
             "execution_trace": [*state.get("execution_trace", []), "normalize_input"],
         }
 
