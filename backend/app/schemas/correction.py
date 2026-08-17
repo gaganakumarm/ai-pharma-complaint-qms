@@ -5,6 +5,11 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from app.domain import ProductType
 from app.schemas.assessment import ComplaintQualityAssessment
+from app.schemas.enhancements import (
+    CompletenessAssessment,
+    DuplicateMatch,
+    RcaCapaRecommendations,
+)
 
 
 class CorrectionField(StrEnum):
@@ -88,6 +93,11 @@ class ComplaintCorrectionRequest(BaseModel):
     current_complaint: CorrectableComplaint
     instruction: str
     current_quality_assessment: ComplaintQualityAssessment
+    current_completeness_assessment: CompletenessAssessment | None = None
+    current_possible_duplicate_matches: list[DuplicateMatch] = Field(
+        default_factory=list, max_length=5
+    )
+    current_rca_capa_recommendations: RcaCapaRecommendations | None = None
     client_draft_revision: int | None = Field(default=None, ge=0)
 
 
@@ -97,6 +107,9 @@ class ComplaintCorrectionResponse(BaseModel):
     changed_fields: list[CorrectionField]
     warnings: list[str]
     quality_assessment: ComplaintQualityAssessment
+    completeness_assessment: CompletenessAssessment
+    possible_duplicate_matches: list[DuplicateMatch] = Field(max_length=5)
+    rca_capa_recommendations: RcaCapaRecommendations
     assistant_message: str
     status: CorrectionStatus
     model: str

@@ -18,6 +18,7 @@ import {
 } from './complaintSlice'
 import { complaintFormSchema, type ComplaintFormValues } from './schema'
 import type { ComplaintDraft } from './types'
+import { EnhancementPanels } from './EnhancementPanels'
 
 const MAX_UPLOAD_SIZE_MB = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB ?? 10)
 
@@ -59,6 +60,10 @@ export function ComplaintWorkspace() {
     correctionStatus,
     correctionError,
     clarificationQuestion,
+    completenessAssessment,
+    possibleDuplicateMatches,
+    rcaCapaRecommendations,
+    enhancementResultsStale,
   } = complaint
   const {
     register,
@@ -344,6 +349,12 @@ export function ComplaintWorkspace() {
             <textarea className={inputClass} {...bind('suggestedNextAction')} />
           </label>
         </Section>
+        <EnhancementPanels
+          completeness={completenessAssessment}
+          duplicates={possibleDuplicateMatches}
+          rcaCapa={rcaCapaRecommendations}
+          stale={enhancementResultsStale}
+        />
         {error && (
           <p
             role="alert"

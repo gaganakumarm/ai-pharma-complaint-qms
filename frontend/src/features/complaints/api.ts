@@ -6,6 +6,9 @@ import type {
   ProcessDocumentResponse,
   ComplaintQualityAssessment,
   ComplaintCorrectionResponse,
+  CompletenessAssessment,
+  DuplicateMatch,
+  RcaCapaRecommendations,
 } from './types'
 
 export interface PaginatedComplaints {
@@ -32,6 +35,9 @@ export async function correctComplaint(
   draft: ComplaintDraft,
   assessment: ComplaintQualityAssessment,
   instruction: string,
+  completeness: CompletenessAssessment | null = null,
+  duplicates: DuplicateMatch[] = [],
+  rcaCapa: RcaCapaRecommendations | null = null,
 ) {
   const response = await apiClient.post<ComplaintCorrectionResponse>(
     '/api/complaints/correct',
@@ -55,6 +61,9 @@ export async function correctComplaint(
       },
       instruction,
       current_quality_assessment: assessment,
+      current_completeness_assessment: completeness,
+      current_possible_duplicate_matches: duplicates,
+      current_rca_capa_recommendations: rcaCapa,
     },
   )
   return response.data

@@ -20,6 +20,19 @@ try {
       )
     }
   })
+  if (process.env.ACCEPTANCE_DEBUG) {
+    page.on('response', (response) => {
+      if (response.url().includes('/api/'))
+        console.error('RESPONSE', response.status(), response.url())
+    })
+    page.on('requestfailed', (request) =>
+      console.error(
+        'REQUEST_FAILED',
+        request.url(),
+        request.failure()?.errorText,
+      ),
+    )
+  }
   if (fakeAiUrl) {
     await page.route('**/api/complaints/**', async (route) => {
       const pathname = new URL(route.request().url()).pathname
@@ -34,7 +47,7 @@ try {
       }
     })
   }
-  page.setDefaultTimeout(120_000)
+  page.setDefaultTimeout(Number(process.env.ACCEPTANCE_TIMEOUT ?? 120_000))
   await page.goto('http://localhost:5173', { waitUntil: 'networkidle' })
   const ledgerCount = async () =>
     page.evaluate(async () => {
@@ -87,6 +100,18 @@ try {
     .inputValue()
   const fdfCustomerAfter = await page.getByLabel(/Customer Name/).inputValue()
   const afterFdfCorrection = await ledgerCount()
+  const completenessVisible = await page
+    .getByRole('heading', { name: 'Complaint completeness' })
+    .isVisible()
+  const rcaCapaVisible = await page
+    .getByRole('heading', {
+      name: 'Investigation and CAPA recommendations',
+    })
+    .isVisible()
+  const duplicateCandidateVisible = await page
+    .getByText(/CMP-\d{4}-\d{6} — \d+%/)
+    .first()
+    .isVisible()
   const refreshedFdfAssessment = await page
     .getByLabel('AI quality assessment')
     .textContent()
@@ -215,6 +240,13 @@ try {
     'Fictional Retry Company'
 
   await page
+    .getByLabel(/Complaint Description/)
+    .fill('Fictional manually edited API complaint description.')
+  const staleResultsVisible = await page
+    .getByText('Results may be outdated after relevant manual edits.')
+    .isVisible()
+
+  await page
     .getByLabel('Choose a PDF or drag it here')
     .setInputFiles(path.join(samples, 'fictional-textless-complaint.pdf'))
   await page.getByRole('button', { name: 'Process PDF' }).click()
@@ -255,6 +287,10 @@ try {
       correctedFdfQuantity,
       fdfUnrelatedPreserved: fdfCustomerBefore === fdfCustomerAfter,
       fdfAssessmentRefreshed: Boolean(refreshedFdfAssessment),
+      completenessVisible,
+      rcaCapaVisible,
+      duplicateCandidateVisible,
+      staleResultsVisible,
       fdfCategory,
       fdfSeverity,
       fdfRisk,

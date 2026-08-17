@@ -4,7 +4,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.ai.graph import build_extraction_warnings
+from app.ai.graph import build_extraction_warnings, deterministic_test_recommendations
 from app.ai.providers import ComplaintExtractionProvider
 from app.core.exceptions import InputProcessingError, MalformedProviderResponseError
 from app.schemas.assessment import ComplaintQualityAssessment
@@ -14,12 +14,14 @@ from app.schemas.correction import (
     CorrectionField,
     CorrectionStatus,
 )
+from app.schemas.enhancements import RcaCapaRecommendations
 from app.services.corrections import merge_correction
 
 RISK_FIELDS = set(CorrectionField) - {
     CorrectionField.COMPLAINT_SOURCE,
     CorrectionField.CUSTOMER_NAME,
 }
+RCA_CAPA_FIELDS = RISK_FIELDS
 
 
 class CorrectionGraphState(TypedDict, total=False):
@@ -34,6 +36,9 @@ class CorrectionGraphState(TypedDict, total=False):
     reassessment_required: bool
     assessment_payload: Mapping[str, Any]
     quality_assessment: ComplaintQualityAssessment
+    current_rca_capa_recommendations: RcaCapaRecommendations | None
+    rca_capa_payload: Mapping[str, Any]
+    rca_capa_recommendations: RcaCapaRecommendations
     warnings: list[str]
     assistant_message: str
     status: CorrectionStatus
@@ -126,6 +131,37 @@ def build_correction_graph(
             "execution_trace": [*state["execution_trace"], "validate_assessment"],
         }
 
+    async def recommend_rca_capa(state: CorrectionGraphState) -> CorrectionGraphState:
+        changed = bool(set(state["changed_fields"]) & RCA_CAPA_FIELDS)
+        if changed or state.get("current_rca_capa_recommendations") is None:
+            method = getattr(provider, "recommend_rca_capa", None)
+            payload = (
+                await method(state["updated_complaint"], state["quality_assessment"])
+                if method
+                else deterministic_test_recommendations()
+            )
+        else:
+            current = state["current_rca_capa_recommendations"]
+            if current is None:
+                raise MalformedProviderResponseError
+            payload = current.model_dump()
+        return {
+            "rca_capa_payload": payload,
+            "execution_trace": [*state["execution_trace"], "recommend_rca_capa"],
+        }
+
+    async def validate_rca_capa(state: CorrectionGraphState) -> CorrectionGraphState:
+        try:
+            recommendations = RcaCapaRecommendations.model_validate(
+                state["rca_capa_payload"]
+            )
+        except Exception as exc:
+            raise MalformedProviderResponseError from exc
+        return {
+            "rca_capa_recommendations": recommendations,
+            "execution_trace": [*state["execution_trace"], "validate_rca_capa"],
+        }
+
     async def prepare(state: CorrectionGraphState) -> CorrectionGraphState:
         if state["patch"].clarification_required:
             status = CorrectionStatus.CLARIFICATION_REQUIRED
@@ -166,6 +202,8 @@ def build_correction_graph(
         ("recalculate_warnings", warnings),
         ("reassess_complaint", reassess),
         ("validate_assessment", validate_assessment),
+        ("recommend_rca_capa", recommend_rca_capa),
+        ("validate_rca_capa", validate_rca_capa),
         ("prepare_response", prepare),
     ):
         builder.add_node(name, node)
@@ -177,6 +215,8 @@ def build_correction_graph(
         "recalculate_warnings",
         "reassess_complaint",
         "validate_assessment",
+        "recommend_rca_capa",
+        "validate_rca_capa",
         "prepare_response",
     ]
     builder.add_edge(START, order[0])

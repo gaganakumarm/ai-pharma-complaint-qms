@@ -158,6 +158,8 @@ async def test_graph_runs_nodes_and_reassesses_quality_change() -> None:
         "recalculate_warnings",
         "reassess_complaint",
         "validate_assessment",
+        "recommend_rca_capa",
+        "validate_rca_capa",
         "prepare_response",
     ]
 

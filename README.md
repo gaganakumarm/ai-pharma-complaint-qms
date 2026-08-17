@@ -148,3 +148,20 @@ docker compose config
 
 GitHub Actions runs these backend and frontend checks on every push and pull request.
 See [docs/architecture.md](docs/architecture.md) for the package responsibilities.
+
+## Sprint 6 decision support
+
+Text/PDF processing and corrections now return three review-only enhancements:
+
+- deterministic completeness against the five manual-commit fields;
+- deterministic, bounded duplicate candidates from committed PostgreSQL records;
+- AI-assisted root-cause hypotheses and proposed corrective/preventive actions.
+
+These results never commit, merge, reject, suppress, release, recall, or dispose of a
+complaint or batch. Duplicate results are possible matches only. RCA/CAPA output is
+unapproved investigation support requiring authorised QA review. Manual edits update
+completeness locally and mark duplicate/RCA-CAPA results as potentially outdated.
+
+`POST /api/complaints/check-duplicates` performs a non-persistent focused duplicate
+check. Candidate retrieval is limited to 50 records and responses contain at most five
+ranked matches. See `docs/database-and-api.md` for the contract and thresholds.

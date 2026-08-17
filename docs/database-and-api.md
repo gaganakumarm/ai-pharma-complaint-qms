@@ -291,3 +291,20 @@ Error categories include validation, not found, unsupported file, file too large
 ## 11. Migration policy
 
 Schema changes use new Alembic revisions. Applied migrations are not edited retrospectively. Upgrades must work on an empty database and an existing persistent volume; relevant downgrade paths are verified during development.
+## Sprint 6 processing enhancements
+
+`POST /api/complaints/process-text`, `POST /process-document`, and `POST /correct`
+include `completeness_assessment`, `possible_duplicate_matches`, and
+`rca_capa_recommendations`. Existing response fields remain unchanged.
+
+`POST /api/complaints/check-duplicates` accepts only comparison fields and an optional
+current UUID. It never persists. PostgreSQL first retrieves at most 50 exact normalized
+batch or case-insensitive product candidates, supplemented by recent records. Scoring:
+exact batch 40, product similarity 30, category 12, description 13, and quantity 5.
+Scores are clamped to 0–100; 45 is `POSSIBLE_MATCH`, 75 is `STRONG_MATCH`, and at most
+five results are returned. Description similarity alone cannot reach the threshold.
+
+Completeness uses customer, product, batch/lot, category, and description as required
+fields. Recommended fields never block manual commit. RCA/CAPA fields are advisory,
+strictly validated, non-persistent, and always carry the application-controlled human
+review disclaimer.

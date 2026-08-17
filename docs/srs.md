@@ -264,3 +264,12 @@ The workflow is informed by [ICH Q10 Pharmaceutical Quality System](https://data
 - Conversational corrections and bonus capabilities: planned for subsequent controlled sprints
 
 This SRS is the final scope baseline; implementation status is maintained in `testing-and-sprints.md`.
+## Sprint 6 functional requirements
+
+The system shall calculate deterministic complaint completeness, return up to five
+bounded deterministic possible duplicate matches, and provide strictly validated
+AI-assisted investigation/root-cause/CAPA recommendations. It shall recalculate these
+results after processing and relevant corrections, preserve applicable results after
+unrelated corrections, and identify potentially stale results after relevant manual
+edits. None of these functions shall automatically persist, merge, suppress, approve,
+close, release, reject, recall, or dispose of a complaint or batch.

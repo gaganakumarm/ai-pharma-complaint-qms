@@ -267,3 +267,15 @@ After each sprint, update only:
 - Final checklist items when complete
 
 Do not rewrite historical pass evidence without a documented reason.
+## Sprint 6
+
+Acceptance covers pure completeness and similarity boundaries, bounded PostgreSQL
+candidate retrieval, strict RCA/CAPA schema and safety rejection, shared text/PDF
+LangGraph behavior, correction recalculation/preservation, Redux reset/stale behavior,
+accessible panels, non-persistence, and explicit commit/restart retrieval. The complete
+browser workflow uses the deterministic fake provider. Real Groq verification is
+limited to one fictional FDF and one fictional API smoke scenario when quota permits;
+HTTP 429 is recorded as an external-provider limitation and is never looped.
+
+Acceptance status: **PASSED**. The complete deterministic browser workflow and both
+single-call fictional FDF/API RCA-CAPA provider smoke checks passed on 2026-08-18.

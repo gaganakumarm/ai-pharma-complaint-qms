@@ -103,6 +103,34 @@ async def test_create_retrieve_and_number_uniqueness(pg_client: AsyncClient) -> 
     )
 
 
+async def test_bounded_duplicate_candidates_and_self_exclusion(
+    pg_client: AsyncClient,
+) -> None:
+    created = await pg_client.post(
+        "/api/complaints", json=valid_payload("sprint6-duplicate")
+    )
+    assert created.status_code == 201
+    record = created.json()
+    before = (await pg_client.get("/api/complaints?page=1&page_size=1")).json()["total"]
+    payload = {
+        "product_name": "Paracetamol 500 mg",
+        "batch_lot_number": "LOT sprint6 duplicate",
+        "complaint_category": "Packaging",
+        "complaint_description": "Blister seal was damaged on receipt.",
+    }
+    response = await pg_client.post("/api/complaints/check-duplicates", json=payload)
+    assert response.status_code == 200
+    assert len(response.json()["matches"]) <= 5
+    assert response.json()["matches"][0]["complaint_id"] == record["id"]
+    payload["current_complaint_id"] = record["id"]
+    excluded = await pg_client.post("/api/complaints/check-duplicates", json=payload)
+    assert all(
+        match["complaint_id"] != record["id"] for match in excluded.json()["matches"]
+    )
+    after = (await pg_client.get("/api/complaints?page=1&page_size=1")).json()["total"]
+    assert after == before
+
+
 async def test_validation_errors_use_standard_contract(pg_client: AsyncClient) -> None:
     missing = await pg_client.post("/api/complaints", json={})
     blank = await pg_client.post(

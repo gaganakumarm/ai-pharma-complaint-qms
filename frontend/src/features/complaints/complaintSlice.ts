@@ -13,6 +13,9 @@ import type {
   ExtractedComplaint,
   SelectedDocument,
   ComplaintQualityAssessment,
+  CompletenessAssessment,
+  DuplicateMatch,
+  RcaCapaRecommendations,
 } from './types'
 
 export const initialDraft: ComplaintDraft = {
@@ -64,6 +67,10 @@ export interface ComplaintState {
   correctionError: string | null
   changedFields: string[]
   clarificationQuestion: string | null
+  completenessAssessment: CompletenessAssessment | null
+  possibleDuplicateMatches: DuplicateMatch[]
+  rcaCapaRecommendations: RcaCapaRecommendations | null
+  enhancementResultsStale: boolean
 }
 
 const initialState: ComplaintState = {
@@ -88,6 +95,10 @@ const initialState: ComplaintState = {
   correctionError: null,
   changedFields: [],
   clarificationQuestion: null,
+  completenessAssessment: null,
+  possibleDuplicateMatches: [],
+  rcaCapaRecommendations: null,
+  enhancementResultsStale: false,
 }
 
 export const applyCorrection = createAsyncThunk(
@@ -101,6 +112,9 @@ export const applyCorrection = createAsyncThunk(
         state.draft,
         state.qualityAssessment,
         instruction,
+        state.completenessAssessment,
+        state.possibleDuplicateMatches,
+        state.rcaCapaRecommendations,
       )
     } catch (error) {
       return rejectWithValue(
@@ -138,6 +152,103 @@ function beginNewIntake(state: ComplaintState) {
   state.requestStatus = 'idle'
   state.savedRecord = null
   state.error = null
+  state.completenessAssessment = null
+  state.possibleDuplicateMatches = []
+  state.rcaCapaRecommendations = null
+  state.enhancementResultsStale = false
+}
+
+const requiredDraftFields: Array<keyof ComplaintDraft> = [
+  'customerName',
+  'productName',
+  'batchLotNumber',
+  'complaintCategory',
+  'complaintDescription',
+]
+const placeholders = new Set([
+  '',
+  'n/a',
+  'na',
+  'none',
+  'not applicable',
+  'not available',
+  'not provided',
+  'unknown',
+  'unavailable',
+])
+const fieldApiNames: Partial<Record<keyof ComplaintDraft, string>> = {
+  customerName: 'customer_name',
+  productName: 'product_name',
+  batchLotNumber: 'batch_lot_number',
+  complaintCategory: 'complaint_category',
+  complaintDescription: 'complaint_description',
+}
+const relevantEnhancementFields = new Set<keyof ComplaintDraft>([
+  'productType',
+  'productName',
+  'productStrengthGrade',
+  'batchLotNumber',
+  'affectedQuantity',
+  'manufacturingDate',
+  'expiryRetestDate',
+  'originatingSiteBlock',
+  'impactedNonProductMaterials',
+  'complaintCategory',
+  'complaintDescription',
+  'suggestedSeverity',
+  'initialRiskAssessment',
+])
+
+function meaningful(value: string) {
+  return !placeholders.has(value.trim().toLowerCase().replace(/\.$/, ''))
+}
+
+function recalculateCompleteness(state: ComplaintState) {
+  const missing = requiredDraftFields.filter(
+    (field) => !meaningful(state.draft[field]),
+  )
+  const present = requiredDraftFields.length - missing.length
+  const recommended: Array<[keyof ComplaintDraft, string]> = [
+    ['complaintSource', 'complaint_source'],
+    ['affectedQuantity', 'affected_quantity'],
+    ['manufacturingDate', 'manufacturing_date'],
+    ['expiryRetestDate', 'expiry_retest_date'],
+    ['originatingSiteBlock', 'originating_site_block'],
+    ['impactedNonProductMaterials', 'impacted_non_product_materials'],
+  ]
+  if (state.draft.productType === 'FDF' || state.draft.productType === 'API')
+    recommended.push(['productStrengthGrade', 'product_strength_grade'])
+  state.completenessAssessment = {
+    status: missing.length ? 'NEEDS_INFORMATION' : 'COMPLETE',
+    required_fields_present: present,
+    total_required_fields: requiredDraftFields.length,
+    completeness_percentage: Math.floor(
+      (present * 100) / requiredDraftFields.length,
+    ),
+    missing_required_fields: missing.map((field) => fieldApiNames[field]!),
+    missing_recommended_fields: recommended
+      .filter(([field]) => !meaningful(state.draft[field]))
+      .map(([, name]) => name),
+    guidance: missing.length
+      ? 'Provide the missing required information before manual commit.'
+      : 'All required commit fields are present. Review recommended gaps and the full draft before manual commit.',
+  }
+}
+
+function applyEnhancements(
+  state: ComplaintState,
+  payload: {
+    completeness_assessment?: CompletenessAssessment
+    possible_duplicate_matches?: DuplicateMatch[]
+    rca_capa_recommendations?: RcaCapaRecommendations
+  },
+) {
+  if (!payload.completeness_assessment || !payload.rca_capa_recommendations)
+    return
+  state.completenessAssessment = payload.completeness_assessment
+  state.possibleDuplicateMatches = payload.possible_duplicate_matches ?? []
+  state.rcaCapaRecommendations = payload.rca_capa_recommendations
+  state.enhancementResultsStale = false
 }
 
 export const processDocumentComplaint = createAsyncThunk(
@@ -233,6 +344,9 @@ const complaintSlice = createSlice({
     ) => {
       const { field, value } = action.payload
       ;(state.draft[field] as string) = value
+      if (state.completenessAssessment) recalculateCompleteness(state)
+      if (relevantEnhancementFields.has(field))
+        state.enhancementResultsStale = true
       state.requestStatus = 'idle'
       state.error = null
     },
@@ -307,6 +421,7 @@ const complaintSlice = createSlice({
           if (value !== null) (state.draft[target] as string) = value
         }
         applyAssessment(state, action.payload.quality_assessment)
+        applyEnhancements(state, action.payload)
       })
       .addCase(processTextComplaint.rejected, (state, action) => {
         if (action.meta.condition) return
@@ -346,6 +461,7 @@ const complaintSlice = createSlice({
           if (value !== null) (state.draft[target] as string) = value
         }
         applyAssessment(state, action.payload.quality_assessment)
+        applyEnhancements(state, action.payload)
       })
       .addCase(processDocumentComplaint.rejected, (state, action) => {
         if (action.meta.condition) return
@@ -390,6 +506,7 @@ const complaintSlice = createSlice({
         state.draft.complaintCategory =
           response.updated_complaint.complaint_category ?? ''
         applyAssessment(state, response.quality_assessment)
+        applyEnhancements(state, response)
         state.correctionInstruction = ''
       })
       .addCase(applyCorrection.rejected, (state, action) => {

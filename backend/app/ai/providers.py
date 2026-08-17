@@ -15,9 +15,11 @@ from pydantic import ValidationError
 from app.ai.prompts import (
     ASSESSMENT_SYSTEM_PROMPT,
     CORRECTION_SYSTEM_PROMPT,
+    RCA_CAPA_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     assessment_user_prompt,
     correction_user_prompt,
+    rca_capa_user_prompt,
     user_prompt,
 )
 from app.core.exceptions import (
@@ -30,6 +32,7 @@ from app.core.exceptions import (
 )
 from app.schemas.assessment import ComplaintQualityAssessment
 from app.schemas.correction import ComplaintCorrectionPatch, CorrectableComplaint
+from app.schemas.enhancements import RcaCapaRecommendations
 from app.schemas.extraction import ExtractedComplaint
 
 
@@ -44,6 +47,12 @@ class ComplaintExtractionProvider(Protocol):
 
     async def extract_correction(
         self, current_complaint: CorrectableComplaint, instruction: str
+    ) -> Mapping[str, Any]: ...
+
+    async def recommend_rca_capa(
+        self,
+        complaint: ExtractedComplaint | CorrectableComplaint,
+        assessment: ComplaintQualityAssessment,
     ) -> Mapping[str, Any]: ...
 
 
@@ -93,6 +102,23 @@ class GroqComplaintExtractionProvider:
             ComplaintCorrectionPatch,
         )
 
+    async def recommend_rca_capa(
+        self,
+        complaint: ExtractedComplaint | CorrectableComplaint,
+        assessment: ComplaintQualityAssessment,
+    ) -> Mapping[str, Any]:
+        schema = RcaCapaRecommendations.model_json_schema()
+        schema["required"] = list(schema["properties"])
+        return await self._structured_output(
+            RCA_CAPA_SYSTEM_PROMPT,
+            rca_capa_user_prompt(
+                complaint.model_dump_json(), assessment.model_dump_json()
+            ),
+            schema,
+            "pharmaceutical_rca_capa_recommendations",
+            RcaCapaRecommendations,
+        )
+
     async def _structured_output(
         self,
         system_prompt: str,
@@ -101,7 +127,8 @@ class GroqComplaintExtractionProvider:
         schema_name: str,
         response_model: type[ExtractedComplaint]
         | type[ComplaintQualityAssessment]
-        | type[ComplaintCorrectionPatch],
+        | type[ComplaintCorrectionPatch]
+        | type[RcaCapaRecommendations],
     ) -> Mapping[str, Any]:
         if not self.api_key.strip():
             raise MissingAIConfigurationError

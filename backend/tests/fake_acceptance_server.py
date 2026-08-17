@@ -1,9 +1,11 @@
+import os
 from collections.abc import Mapping
 from typing import Any
 
 import app.main as main_module
 from app.core.config import Settings
 from app.domain import ProductType
+from app.schemas.assessment import ComplaintQualityAssessment
 from app.schemas.correction import CorrectableComplaint
 from app.schemas.extraction import ExtractedComplaint
 
@@ -106,8 +108,54 @@ class DeterministicAcceptanceProvider:
             "clarification_question": None,
         }
 
+    async def recommend_rca_capa(
+        self,
+        complaint: ExtractedComplaint | CorrectableComplaint,
+        assessment: ComplaintQualityAssessment,
+    ) -> Mapping[str, Any]:
+        context = (
+            "API downstream manufacturing"
+            if complaint.product_type == "API"
+            else "FDF product"
+        )
+        return {
+            "potential_root_causes": [
+                {
+                    "statement": f"A {context} process variation may have contributed",
+                    "rationale": (
+                        "The fictional complaint requires evidence-based investigation"
+                    ),
+                    "evidence_required": (
+                        "Relevant batch records and verified test data"
+                    ),
+                }
+            ],
+            "investigation_areas": ["Batch documentation", "Retained sample review"],
+            "corrective_actions": [
+                {
+                    "action": "Evaluate evidence-based containment",
+                    "purpose": "Control potential quality impact during investigation",
+                    "verification": "Authorised QA verifies documented completion",
+                }
+            ],
+            "preventive_actions": [
+                {
+                    "action": "Trend verified investigation findings",
+                    "purpose": "Identify recurrence",
+                    "effectiveness_check": "QA reviews the defined trend period",
+                }
+            ],
+            "assumptions_or_limitations": [
+                "Complaint intake evidence is insufficient to determine causality"
+            ],
+            "human_review_required": True,
+            "disclaimer": "Fake provider value replaced by application",
+        }
 
-settings = Settings(database_url="sqlite+aiosqlite:///:memory:")
+
+settings = Settings(
+    database_url=os.getenv("FAKE_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+)
 main_module.GroqComplaintExtractionProvider = (  # type: ignore[misc]
     lambda *_args, **_kwargs: DeterministicAcceptanceProvider()
 )

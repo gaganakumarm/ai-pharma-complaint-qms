@@ -226,3 +226,18 @@ PostgreSQL must become healthy before backend startup; the frontend depends on b
 ## 13. Limitations
 
 This is a modular assignment MVP, not a validated production QMS. Scaling, authentication, electronic signatures, comprehensive audit trails, regulatory reporting, advanced OCR, and autonomous quality decisions are outside scope.
+
+## 14. Sprint 6 boundaries
+
+- `ComplaintCompletenessChecker` is pure deterministic domain logic.
+- `ComplaintRepository` performs a bounded, newest-first candidate query only.
+- `DuplicateScorer` is pure and database-independent; `DuplicateDetectionService`
+  coordinates retrieval and ranking through a protocol dependency.
+- LangGraph runs extraction, quality assessment, deterministic completeness, and the
+  explicit RCA/CAPA provider stage. Correction graphs regenerate only for relevant
+  changed fields and preserve validated results for unrelated corrections.
+- The Groq adapter owns strict structured-output SDK calls and controlled retries.
+- Redux owns completeness, duplicates, RCA/CAPA and stale/reset state; React renders
+  focused accessible panels.
+
+No Sprint 6 enhancement is persisted as an approved regulatory record.
