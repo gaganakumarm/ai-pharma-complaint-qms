@@ -65,6 +65,7 @@ export interface ProcessTextResponse {
   source_type: 'TEXT'
   input_length: number
   extracted_complaint: ExtractedComplaint
+  quality_assessment: ComplaintQualityAssessment
   warnings: string[]
   assistant_message: string
   status: 'PROCESSED'
@@ -88,10 +89,24 @@ export interface ProcessDocumentResponse {
   source_type: 'PDF'
   document: DocumentMetadata
   extracted_complaint: ExtractedComplaint
+  quality_assessment: ComplaintQualityAssessment
   warnings: string[]
   assistant_message: string
   status: 'PROCESSED'
   model: string
+}
+
+export interface ComplaintQualityAssessment {
+  complaint_category: string
+  structured_complaint_description: string
+  suggested_severity: Exclude<ComplaintSeverity, ''>
+  severity_rationale: string
+  initial_risk_assessment: string
+  suggested_next_action: string
+  assessment_status: 'COMPLETE' | 'NEEDS_INFORMATION'
+  information_gaps: string[]
+  human_review_required: true
+  disclaimer: string
 }
 
 export interface ConversationMessage {

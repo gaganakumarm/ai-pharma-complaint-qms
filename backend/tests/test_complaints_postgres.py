@@ -33,6 +33,9 @@ def valid_payload(suffix: str = "1") -> dict[str, str]:
         "expiry_retest_date": "Not Provided",
         "complaint_category": "Packaging",
         "complaint_description": "Blister seal was damaged on receipt.",
+        "suggested_severity": "MAJOR",
+        "initial_risk_assessment": "Potential primary packaging quality impact.",
+        "suggested_next_action": "Open a QA investigation and inspect samples.",
     }
 
 
@@ -86,6 +89,10 @@ async def test_create_retrieve_and_number_uniqueness(pg_client: AsyncClient) -> 
     retrieved = await pg_client.get(f"/api/complaints/{first_body['id']}")
     assert retrieved.status_code == 200
     assert retrieved.json()["complaint_number"] == first_body["complaint_number"]
+    assert retrieved.json()["suggested_severity"] == "MAJOR"
+    assert retrieved.json()["initial_risk_assessment"] == (
+        "Potential primary packaging quality impact."
+    )
 
 
 async def test_validation_errors_use_standard_contract(pg_client: AsyncClient) -> None:

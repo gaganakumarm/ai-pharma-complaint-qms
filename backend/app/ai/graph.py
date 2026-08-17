@@ -7,6 +7,7 @@ from langgraph.graph import END, START, StateGraph
 from app.ai.providers import ComplaintExtractionProvider
 from app.core.exceptions import InputProcessingError, MalformedProviderResponseError
 from app.domain import SourceType
+from app.schemas.assessment import ComplaintQualityAssessment
 from app.schemas.extraction import ExtractedComplaint
 
 
@@ -16,6 +17,10 @@ class ComplaintGraphState(TypedDict, total=False):
     source_type: SourceType
     extracted_complaint: ExtractedComplaint
     provider_payload: Mapping[str, Any]
+    assessment_payload: Mapping[str, Any]
+    quality_assessment: ComplaintQualityAssessment
+    information_gaps: list[str]
+    assessment_error: str | None
     validation_warnings: list[str]
     assistant_message: str
     processing_error: str | None
@@ -87,12 +92,46 @@ def build_complaint_graph(
             ],
         }
 
+    async def assess_complaint_quality(
+        state: ComplaintGraphState,
+    ) -> ComplaintGraphState:
+        payload = await provider.assess_complaint(state["extracted_complaint"])
+        return {
+            "assessment_payload": payload,
+            "execution_trace": [
+                *state.get("execution_trace", []),
+                "assess_complaint_quality",
+            ],
+        }
+
+    async def validate_quality_assessment(
+        state: ComplaintGraphState,
+    ) -> ComplaintGraphState:
+        try:
+            assessment = ComplaintQualityAssessment.model_validate(
+                state["assessment_payload"]
+            )
+        except Exception as exc:
+            raise MalformedProviderResponseError from exc
+        return {
+            "quality_assessment": assessment,
+            "information_gaps": assessment.information_gaps,
+            "assessment_error": None,
+            "execution_trace": [
+                *state.get("execution_trace", []),
+                "validate_quality_assessment",
+            ],
+        }
+
     async def prepare_response(state: ComplaintGraphState) -> ComplaintGraphState:
         warnings = state["validation_warnings"]
-        message = "I extracted the complaint details that were present. " + (
-            "Please review the missing information listed below."
-            if warnings
-            else "Please review the populated form before committing it."
+        message = (
+            "I extracted and assessed the complaint details that were present. "
+            + (
+                "Please review the missing information listed below."
+                if warnings
+                else "Please review the populated form before committing it."
+            )
         )
         return {
             "assistant_message": message,
@@ -107,10 +146,14 @@ def build_complaint_graph(
     builder.add_node("normalize_input", normalize_input)
     builder.add_node("extract_complaint_fields", extract_complaint_fields)
     builder.add_node("validate_extraction", validate_extraction)
+    builder.add_node("assess_complaint_quality", assess_complaint_quality)
+    builder.add_node("validate_quality_assessment", validate_quality_assessment)
     builder.add_node("prepare_response", prepare_response)
     builder.add_edge(START, "normalize_input")
     builder.add_edge("normalize_input", "extract_complaint_fields")
     builder.add_edge("extract_complaint_fields", "validate_extraction")
-    builder.add_edge("validate_extraction", "prepare_response")
+    builder.add_edge("validate_extraction", "assess_complaint_quality")
+    builder.add_edge("assess_complaint_quality", "validate_quality_assessment")
+    builder.add_edge("validate_quality_assessment", "prepare_response")
     builder.add_edge("prepare_response", END)
     return builder.compile()

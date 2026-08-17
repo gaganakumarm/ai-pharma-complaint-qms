@@ -78,6 +78,9 @@ async def test_textless_pdf_fails_before_groq() -> None:
         async def extract(self, _text: str) -> Mapping[str, Any]:
             raise AssertionError("Groq must not be called for a textless PDF")
 
+        async def assess_complaint(self, _complaint: object) -> Mapping[str, Any]:
+            raise AssertionError("Groq must not be called for a textless PDF")
+
     provider = NeverProvider()
     text_service = TextComplaintProcessingService(
         build_complaint_graph(provider, 20000),

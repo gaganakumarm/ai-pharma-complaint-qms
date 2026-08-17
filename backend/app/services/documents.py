@@ -101,6 +101,7 @@ class DocumentComplaintProcessingService:
                     character_count=result.input_length,
                 ),
                 extracted_complaint=result.extracted_complaint,
+                quality_assessment=result.quality_assessment,
                 warnings=result.warnings,
                 assistant_message=result.assistant_message,
                 model=result.model,

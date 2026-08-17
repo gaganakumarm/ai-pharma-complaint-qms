@@ -52,6 +52,7 @@ export function ComplaintWorkspace() {
     documentStatus,
     documentError,
     documentWarnings,
+    qualityAssessment,
   } = complaint
   const {
     register,
@@ -260,10 +261,57 @@ export function ComplaintWorkspace() {
           </label>
         </Section>
         <Section title="AI Copilot Risk Assessment">
-          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 md:col-span-2">
-            AI assessment is unavailable in Sprint 1. These optional fields may
-            be entered manually.
-          </p>
+          {qualityAssessment ? (
+            <div
+              aria-label="AI quality assessment"
+              className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:col-span-2"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">{draft.complaintCategory}</span>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-bold ${
+                    draft.suggestedSeverity === 'CRITICAL'
+                      ? 'bg-red-100 text-red-800'
+                      : draft.suggestedSeverity === 'MAJOR'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  Suggested severity: {draft.suggestedSeverity}
+                </span>
+                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-800">
+                  Assessment:{' '}
+                  {qualityAssessment.assessment_status.replace('_', ' ')}
+                </span>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-500">
+                  Severity rationale
+                </p>
+                <p className="mt-1 text-sm">
+                  {qualityAssessment.severity_rationale}
+                </p>
+              </div>
+              {qualityAssessment.information_gaps.length > 0 && (
+                <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
+                  <p className="font-semibold">Information gaps</p>
+                  <ul className="mt-1 list-disc pl-5">
+                    {qualityAssessment.information_gaps.map((gap) => (
+                      <li key={gap}>{gap}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-900">
+                {qualityAssessment.disclaimer}
+              </p>
+            </div>
+          ) : (
+            <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600 md:col-span-2">
+              Process complaint text or a PDF to generate an initial assessment,
+              or enter these optional fields manually.
+            </p>
+          )}
           <label className="text-sm font-medium">
             Suggested Severity
             <select className={inputClass} {...bind('suggestedSeverity')}>

@@ -11,6 +11,7 @@ import type {
   ConversationMessage,
   ExtractedComplaint,
   SelectedDocument,
+  ComplaintQualityAssessment,
 } from './types'
 
 export const initialDraft: ComplaintDraft = {
@@ -55,6 +56,7 @@ export interface ComplaintState {
     | 'failed'
   documentError: string | null
   documentWarnings: string[]
+  qualityAssessment: ComplaintQualityAssessment | null
 }
 
 const initialState: ComplaintState = {
@@ -73,6 +75,19 @@ const initialState: ComplaintState = {
   documentStatus: 'idle',
   documentError: null,
   documentWarnings: [],
+  qualityAssessment: null,
+}
+
+function applyAssessment(
+  state: ComplaintState,
+  assessment: ComplaintQualityAssessment,
+) {
+  state.qualityAssessment = assessment
+  state.draft.complaintCategory = assessment.complaint_category
+  state.draft.complaintDescription = assessment.structured_complaint_description
+  state.draft.suggestedSeverity = assessment.suggested_severity
+  state.draft.initialRiskAssessment = assessment.initial_risk_assessment
+  state.draft.suggestedNextAction = assessment.suggested_next_action
 }
 
 export const processDocumentComplaint = createAsyncThunk(
@@ -236,6 +251,7 @@ const complaintSlice = createSlice({
           const value = action.payload.extracted_complaint[source]
           if (value !== null) (state.draft[target] as string) = value
         }
+        applyAssessment(state, action.payload.quality_assessment)
       })
       .addCase(processTextComplaint.rejected, (state, action) => {
         if (action.meta.condition) return
@@ -273,6 +289,7 @@ const complaintSlice = createSlice({
           const value = action.payload.extracted_complaint[source]
           if (value !== null) (state.draft[target] as string) = value
         }
+        applyAssessment(state, action.payload.quality_assessment)
       })
       .addCase(processDocumentComplaint.rejected, (state, action) => {
         if (action.meta.condition) return

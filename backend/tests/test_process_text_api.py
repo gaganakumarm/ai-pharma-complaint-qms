@@ -53,6 +53,9 @@ async def test_valid_process_text_returns_draft_without_persistence(
     assert body["source_type"] == "TEXT"
     assert body["extracted_complaint"]["product_type"] == "FDF"
     assert body["status"] == "PROCESSED"
+    assert body["quality_assessment"]["suggested_severity"] == "MAJOR"
+    assert body["quality_assessment"]["human_review_required"] is True
+    assert "authorised quality personnel" in body["quality_assessment"]["disclaimer"]
 
 
 @pytest.mark.parametrize("text", ["", "   "])
@@ -123,3 +126,24 @@ async def test_provider_failures_are_safely_mapped(
     assert response.json() == {
         "error": {"code": code, "message": str(failure), "details": None}
     }
+
+
+async def test_assessment_failure_is_controlled_without_partial_response() -> None:
+    provider = FakeProvider(
+        extraction(complaint_description="Reported defect."), ProviderTimeoutError()
+    )
+    app = create_app(Settings(database_url="sqlite+aiosqlite:///:memory:"))
+    service = TextComplaintProcessingService(
+        build_complaint_graph(provider, 1000), provider
+    )
+    app.dependency_overrides[get_text_processing_service] = lambda: service
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/complaints/process-text", json={"text": "complaint"}
+            )
+    assert response.status_code == 504
+    assert response.json()["error"]["code"] == "AI_TIMEOUT"
+    assert provider.calls == provider.assessment_calls == 1

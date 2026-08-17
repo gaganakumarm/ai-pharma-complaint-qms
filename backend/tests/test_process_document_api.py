@@ -51,6 +51,8 @@ async def test_valid_pdf_returns_contract(document_client: AsyncClient) -> None:
     assert body["source_type"] == "PDF"
     assert body["document"]["filename"] == "api.PDF"
     assert body["extracted_complaint"]["batch_lot_number"] == "MET-API-77A"
+    assert body["quality_assessment"]["suggested_severity"] == "MAJOR"
+    assert body["quality_assessment"]["human_review_required"] is True
     assert "extracted_text" not in body
 
 

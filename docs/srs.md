@@ -256,6 +256,7 @@ The workflow is informed by [ICH Q10 Pharmaceutical Quality System](https://data
 
 - Sprint 0 foundation: implemented and verified
 - Sprint 1 manual QMS ledger: implemented and verified
-- AI, PDF, assessment, correction, and bonus capabilities: implemented in subsequent controlled sprints
+- Text/email AI intake, PDF intake, and initial quality assessment: implemented and verified
+- Conversational corrections and bonus capabilities: planned for subsequent controlled sprints
 
 This SRS is the final scope baseline; implementation status is maintained in `testing-and-sprints.md`.

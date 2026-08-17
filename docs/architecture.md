@@ -126,14 +126,13 @@ The current draft and user instruction are processed into an allowlisted partial
 flowchart TD
     N["Normalize input"] --> X["Extract complaint fields"]
     X --> V["Validate extraction"]
-    V --> R["Classify category and risk"]
-    R --> C["Root-cause and CAPA suggestions"]
-    C --> D["Detect possible duplicates"]
-    D --> P["Prepare response"]
-    U["Correction instruction"] --> CP["Extract allowed patch"]
-    CP --> CV["Validate and merge patch"]
-    CV --> R
+    V --> R["Assess complaint quality and risk"]
+    R --> A["Validate quality assessment"]
+    A --> P["Prepare response"]
 ```
+
+Conversational corrections are planned for Sprint 5. Root-cause/CAPA suggestions and
+duplicate detection remain planned Sprint 6 work and are not part of the current graph.
 
 ### Graph state
 

@@ -20,6 +20,7 @@ class TextComplaintProcessingService:
             source_type=source_type,
             input_length=len(result["normalized_text"]),
             extracted_complaint=result["extracted_complaint"],
+            quality_assessment=result["quality_assessment"],
             warnings=result["validation_warnings"],
             assistant_message=result["assistant_message"],
             model=self.provider.model,

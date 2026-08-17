@@ -10,6 +10,7 @@ from app.core.exceptions import (
     MalformedProviderResponseError,
     ProviderAuthenticationError,
 )
+from app.schemas.assessment import HUMAN_REVIEW_DISCLAIMER
 from app.schemas.extraction import ExtractedComplaint
 from app.services.text_processing import TextComplaintProcessingService
 
@@ -33,18 +34,53 @@ def extraction(**overrides: Any) -> dict[str, Any]:
     return values
 
 
+def assessment(**overrides: Any) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "complaint_category": "Product quality defect",
+        "structured_complaint_description": (
+            "A reported product quality defect requires review."
+        ),
+        "suggested_severity": "MAJOR",
+        "severity_rationale": "The reported defect may affect product quality.",
+        "initial_risk_assessment": "Potential quality impact requires QA evaluation.",
+        "suggested_next_action": (
+            "Open a formal QA investigation and secure relevant samples."
+        ),
+        "assessment_status": "COMPLETE",
+        "information_gaps": [],
+        "human_review_required": True,
+        "disclaimer": HUMAN_REVIEW_DISCLAIMER,
+    }
+    values.update(overrides)
+    return values
+
+
 class FakeProvider:
     model = "fake-structured-model"
 
-    def __init__(self, payload: Mapping[str, Any] | Exception) -> None:
+    def __init__(
+        self,
+        payload: Mapping[str, Any] | Exception,
+        assessment_payload: Mapping[str, Any] | Exception | None = None,
+    ) -> None:
         self.payload = payload
+        self.assessment_payload = assessment_payload or assessment()
         self.calls = 0
+        self.assessment_calls = 0
 
     async def extract(self, _text: str) -> Mapping[str, Any]:
         self.calls += 1
         if isinstance(self.payload, Exception):
             raise self.payload
         return self.payload
+
+    async def assess_complaint(
+        self, _complaint: ExtractedComplaint
+    ) -> Mapping[str, Any]:
+        self.assessment_calls += 1
+        if isinstance(self.assessment_payload, Exception):
+            raise self.assessment_payload
+        return self.assessment_payload
 
 
 def test_normalize_input_preserves_identifier_and_spacing() -> None:
@@ -96,6 +132,8 @@ async def test_langgraph_executes_all_nodes_for_api_and_fdf(
         "normalize_input",
         "extract_complaint_fields",
         "validate_extraction",
+        "assess_complaint_quality",
+        "validate_quality_assessment",
         "prepare_response",
     ]
     assert result["extracted_complaint"].product_type.value == product_type

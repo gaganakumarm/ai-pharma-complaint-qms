@@ -6,7 +6,18 @@ workflow and the official Groq SDK. Extracted values populate the editable Redux
 but are never committed until the user explicitly selects **Commit to QMS Ledger**.
 Sprint 3 adds bounded PDF upload and basic selectable-text extraction with PyMuPDF.
 PDF and pasted-text intake converge on the same AI workflow. OCR and quality-risk
-decisions remain out of scope.
+assessment were outside Sprint 3.
+
+Sprint 4 adds a structured initial pharmaceutical quality and risk assessment to both
+text and PDF processing. It supplies an editable category, structured description,
+suggested severity and rationale, initial risk assessment, next QA action, and explicit
+information gaps. Every result displays this trusted warning:
+
+> AI-generated initial assessment for QA review. Final severity, investigation, batch
+> disposition, CAPA, and market actions must be determined and approved by authorised
+> quality personnel.
+
+Processing remains non-persistent; only an explicit reviewed commit writes to the ledger.
 
 ## Prerequisites
 
@@ -70,6 +81,10 @@ source-faithful values such as `March 2026` and `Not Provided` are preserved.
 - `POST /api/complaints/process-text` extracts a draft from pasted complaint text.
 - `POST /api/complaints/process-document` accepts multipart field `file` containing
   a text-based PDF and returns an unsaved draft plus safe document metadata.
+
+Both processing responses include `quality_assessment`. If assessment fails, the API
+returns a controlled error and does not return a partially trusted assessment; the
+frontend preserves the existing draft for retry.
 
 Text processing requires `GROQ_API_KEY`. `GROQ_MODEL` remains configurable and the
 default uses Groq strict JSON Schema output. `MAX_TEXT_INPUT_LENGTH` defaults to 20,000.

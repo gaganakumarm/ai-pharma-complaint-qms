@@ -216,6 +216,13 @@ Accepts pasted complaint text/email and returns an unsaved validated draft.
 
 Response includes source type, extracted complaint, warnings, status, assistant message, and safe model metadata. It does not insert a database row.
 
+Text and PDF processing responses also contain a validated `quality_assessment` with
+category, structured complaint description, suggested severity, severity rationale,
+initial risk assessment, suggested next action, assessment status, information gaps,
+the forced human-review flag, and the application-owned disclaimer. Assessment failure
+returns a controlled error rather than a partially trusted assessment. Existing frontend
+draft values remain available for retry.
+
 ### POST `/api/complaints/process-document`
 
 Accepts `multipart/form-data` with a required `file` field. The backend reads in bounded

@@ -184,11 +184,18 @@ explicit PDF commit, backend restart retrieval, Docker health, and PostgreSQL re
 passed. PDF processing was proven not to change the ledger count. Production OCR was
 not added.
 
-### Sprint 4 — Mandatory quality assessment
+### Sprint 4 — Mandatory quality assessment — PASSED
 
 **Objective:** Category, severity, initial risk assessment, and suggested next action.
 
-**Gate:** API and FDF assessment contracts validate and display with the QA-review disclaimer.
+Recorded evidence: Ruff and format passed; strict MyPy passed for 49 backend source and
+test files; 80 PostgreSQL-backed tests passed with 13 credential-gated live tests
+skipped; migrations passed. Nine real assessment/PDF Groq scenarios passed and the four
+text/Groq regression scenarios passed. Frontend lint, format, typing, 16 tests, build,
+and both npm audits passed. Browser acceptance verified assessed FDF/API inputs,
+NEEDS_INFORMATION handling, trusted disclaimer, editable fields, textless-PDF draft
+preservation, explicit commit, non-persistence before commit, and restart retrieval.
+Docker health, PostgreSQL readiness, frontend HTTP, and logs passed.
 
 ### Sprint 5 — Conversational corrections
 
@@ -224,7 +231,7 @@ not added.
 | Groq and LangGraph | Mandatory | 2 | Implemented |
 | Text/email intake | Mandatory | 2 | Implemented |
 | PDF intake | Mandatory | 3 | Implemented |
-| Category/risk/next action | Mandatory | 4 | Update after Sprint 4 |
+| Category/risk/next action | Mandatory | 4 | Implemented |
 | Conversational correction | Mandatory | 5 | Update after Sprint 5 |
 | Completeness checker | Bonus | 6 | Update after Sprint 6 |
 | Duplicate detection | Bonus | 6 | Update after Sprint 6 |

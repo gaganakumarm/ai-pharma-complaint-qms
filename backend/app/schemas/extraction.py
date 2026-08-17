@@ -4,6 +4,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain import ProductType, SourceType
+from app.schemas.assessment import ComplaintQualityAssessment
 
 
 class ExtractedComplaint(BaseModel):
@@ -46,6 +47,7 @@ class ProcessTextResponse(BaseModel):
     source_type: SourceType = SourceType.TEXT
     input_length: int
     extracted_complaint: ExtractedComplaint
+    quality_assessment: ComplaintQualityAssessment
     warnings: list[str]
     assistant_message: str
     status: ProcessingStatus = ProcessingStatus.PROCESSED
@@ -63,6 +65,7 @@ class ProcessDocumentResponse(BaseModel):
     source_type: SourceType = SourceType.PDF
     document: DocumentMetadata
     extracted_complaint: ExtractedComplaint
+    quality_assessment: ComplaintQualityAssessment
     warnings: list[str]
     assistant_message: str
     status: ProcessingStatus = ProcessingStatus.PROCESSED

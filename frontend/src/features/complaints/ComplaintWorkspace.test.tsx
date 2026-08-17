@@ -22,6 +22,20 @@ const mockedCommit = vi.mocked(commitComplaint)
 const mockedProcess = vi.mocked(processComplaintText)
 const mockedProcessDocument = vi.mocked(processComplaintDocument)
 
+const qualityAssessment = {
+  complaint_category: 'Product quality defect',
+  structured_complaint_description: 'Validated structured complaint.',
+  suggested_severity: 'MAJOR' as const,
+  severity_rationale: 'The defect may affect product quality.',
+  initial_risk_assessment: 'Potential quality impact requires QA review.',
+  suggested_next_action: 'Open a formal QA investigation.',
+  assessment_status: 'COMPLETE' as const,
+  information_gaps: [],
+  human_review_required: true as const,
+  disclaimer:
+    'AI-generated initial assessment for QA review. Final severity, investigation, batch disposition, CAPA, and market actions must be determined and approved by authorised quality personnel.',
+}
+
 const savedRecord: ComplaintRecord = {
   id: '9bf66d1e-69cb-4e9c-ae66-ff74878d3666',
   complaint_number: 'CMP-2026-000001',
@@ -141,6 +155,7 @@ describe('ComplaintWorkspace', () => {
       input_length: 44,
       status: 'PROCESSED',
       model: 'fake-model',
+      quality_assessment: qualityAssessment,
       warnings: [],
       assistant_message: 'Review the populated form.',
       extracted_complaint: {
@@ -169,6 +184,27 @@ describe('ComplaintWorkspace', () => {
     await user.click(button)
     expect(await screen.findByDisplayValue('Paracetamol')).toBeInTheDocument()
     expect(screen.getByDisplayValue('FDF-42')).toBeInTheDocument()
+    expect(
+      screen.getByDisplayValue('Product quality defect'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByDisplayValue('Validated structured complaint.'),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Suggested Severity')).toHaveValue('MAJOR')
+    expect(
+      screen.getByText('The defect may affect product quality.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/AI-generated initial assessment for QA review/),
+    ).toBeInTheDocument()
+    await user.clear(screen.getByLabelText('Initial Risk Assessment'))
+    await user.type(
+      screen.getByLabelText('Initial Risk Assessment'),
+      'Edited by QA',
+    )
+    expect(screen.getByLabelText('Initial Risk Assessment')).toHaveValue(
+      'Edited by QA',
+    )
     expect(screen.getAllByText('Apollo email complaint')).toHaveLength(2)
     expect(screen.getByText('Review the populated form.')).toBeInTheDocument()
   })
@@ -179,6 +215,11 @@ describe('ComplaintWorkspace', () => {
       input_length: 20,
       status: 'PROCESSED',
       model: 'fake-model',
+      quality_assessment: {
+        ...qualityAssessment,
+        assessment_status: 'NEEDS_INFORMATION',
+        information_gaps: ['Batch number', 'Affected quantity'],
+      },
       warnings: ['Batch number was not provided'],
       assistant_message: 'Please add missing information.',
       extracted_complaint: {
@@ -211,6 +252,8 @@ describe('ComplaintWorkspace', () => {
       'Existing Customer',
     )
     expect(screen.getByText('Pending Triage')).toBeInTheDocument()
+    expect(screen.getByText('Information gaps')).toBeInTheDocument()
+    expect(screen.getByText('Batch number')).toBeInTheDocument()
   })
 
   it('preserves text on processing error and retries once', async () => {
@@ -219,6 +262,7 @@ describe('ComplaintWorkspace', () => {
       input_length: 10,
       status: 'PROCESSED',
       model: 'fake-model',
+      quality_assessment: qualityAssessment,
       warnings: [],
       assistant_message: 'Processed after retry.',
       extracted_complaint: {
@@ -290,6 +334,7 @@ describe('ComplaintWorkspace', () => {
       input_length: 18,
       status: 'PROCESSED',
       model: 'fake-model',
+      quality_assessment: qualityAssessment,
       warnings: [],
       assistant_message: 'Done.',
       extracted_complaint: {
@@ -355,6 +400,7 @@ describe('ComplaintWorkspace', () => {
       },
       status: 'PROCESSED',
       model: 'fake-model',
+      quality_assessment: qualityAssessment,
       warnings: ['Affected quantity was not provided'],
       assistant_message: 'Review the PDF draft.',
       extracted_complaint: {
@@ -419,4 +465,48 @@ describe('ComplaintWorkspace', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('retry.pdf')).toBeInTheDocument()
   })
+
+  it.each(['MINOR', 'CRITICAL'] as const)(
+    'displays the %s suggested severity as text',
+    async (severity) => {
+      mockedProcess.mockResolvedValue({
+        source_type: 'TEXT',
+        input_length: 20,
+        status: 'PROCESSED',
+        model: 'fake-model',
+        quality_assessment: {
+          ...qualityAssessment,
+          suggested_severity: severity,
+        },
+        warnings: [],
+        assistant_message: 'Assessment prepared.',
+        extracted_complaint: {
+          complaint_source: null,
+          customer_name: null,
+          product_type: 'FDF',
+          product_name: 'Test product',
+          product_strength_grade: null,
+          batch_lot_number: null,
+          affected_quantity: null,
+          manufacturing_date: null,
+          expiry_retest_date: null,
+          originating_site_block: null,
+          impacted_non_product_materials: null,
+          complaint_description: 'Reported issue.',
+        },
+      })
+      const user = userEvent.setup()
+      renderWorkspace()
+      await user.type(
+        screen.getByLabelText('Complaint text or email'),
+        'Assess this complaint',
+      )
+      await user.click(
+        screen.getByRole('button', { name: 'Process Complaint' }),
+      )
+      expect(
+        await screen.findByText(`Suggested severity: ${severity}`),
+      ).toBeInTheDocument()
+    },
+  )
 })

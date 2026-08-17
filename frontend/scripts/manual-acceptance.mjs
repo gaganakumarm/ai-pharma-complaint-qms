@@ -35,7 +35,16 @@ try {
   const afterFdfProcessing = await ledgerCount()
   const fdfProductType = await page.getByLabel('Product Type').inputValue()
   const fdfBatch = await page.getByLabel(/Batch\/Lot Number/).inputValue()
-  await page.getByLabel(/Complaint Category/).fill('Product discoloration')
+  const fdfCategory = await page.getByLabel(/Complaint Category/).inputValue()
+  const fdfSeverity = await page.getByLabel('Suggested Severity').inputValue()
+  const fdfRisk = await page.getByLabel('Initial Risk Assessment').inputValue()
+  const fdfAction = await page.getByLabel('Suggested Next Action').inputValue()
+  const fdfAssessment = await page
+    .getByLabel('AI quality assessment')
+    .textContent()
+  await page
+    .getByLabel(/Complaint Category/)
+    .fill(`${fdfCategory} - QA reviewed`)
   await page.getByText('Ready to Commit', { exact: true }).waitFor()
   await page.getByRole('button', { name: 'Commit to QMS Ledger' }).click()
   await page.getByText('COMMITTED', { exact: true }).waitFor()
@@ -64,6 +73,9 @@ try {
   const apiGrade = await page.getByLabel('Product Strength/Grade').inputValue()
   const apiBatch = await page.getByLabel(/Batch\/Lot Number/).inputValue()
   const apiQuantity = await page.getByLabel('Affected Quantity').inputValue()
+  const apiAssessment = await page
+    .getByLabel('AI quality assessment')
+    .textContent()
   const afterApiProcessing = await ledgerCount()
 
   await page
@@ -80,13 +92,17 @@ try {
   await page.getByRole('button', { name: 'Reset Form' }).click()
   await page
     .getByLabel('Complaint text or email')
-    .fill('Paracetamol 500 mg FDF batch TEXT-REG-1 had cracked tablets.')
+    .fill(
+      'A customer reports damaged tablets. No batch or quantity was provided.',
+    )
   await page.getByRole('button', { name: 'Process Complaint' }).click()
-  await page.waitForFunction(
-    () =>
-      document.querySelector('input[name="batchLotNumber"]')?.value ===
-      'TEXT-REG-1',
-  )
+  await page.getByText('Assessment: NEEDS INFORMATION').waitFor()
+  const incompleteBatch = await page
+    .getByLabel(/Batch\/Lot Number/)
+    .inputValue()
+  const incompleteAssessment = await page
+    .getByLabel('AI quality assessment')
+    .textContent()
 
   console.log(
     JSON.stringify({
@@ -98,17 +114,24 @@ try {
         afterApiProcessing === initialCount + 1,
       fdfProductType,
       fdfBatch,
+      fdfCategory,
+      fdfSeverity,
+      fdfRisk,
+      fdfAction,
+      disclaimerVisible: fdfAssessment?.includes(
+        'AI-generated initial assessment for QA review',
+      ),
       complaintNumber,
       complaintId: committed?.id,
       apiProductType,
       apiGrade,
       apiBatch,
       apiQuantity,
+      apiAssessment,
       textlessError,
       draftPreservedAfterTextless,
-      textRegressionBatch: await page
-        .getByLabel(/Batch\/Lot Number/)
-        .inputValue(),
+      incompleteBatch: incompleteBatch || null,
+      incompleteAssessment,
     }),
   )
 } finally {
