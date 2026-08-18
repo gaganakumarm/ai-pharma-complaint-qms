@@ -1,262 +1,341 @@
 # Software Requirements Specification
 
-## AI-Powered Pharmaceutical Customer Complaint Management System
-
-**Repository:** `ai-pharma-complaint-qms`  
-**Document status:** Final requirements baseline  
-**Primary user:** Pharmaceutical Quality Assurance (QA) personnel
-
 ## 1. Purpose
 
-This document specifies an AI-assisted customer-complaint intake module for pharmaceutical companies manufacturing Active Pharmaceutical Ingredients (APIs) and Finished Dosage Forms (FDFs). It defines the product scope, functional and non-functional requirements, data rules, safety boundaries, and acceptance criteria.
+This document defines the requirements for the AI-Powered Pharmaceutical Customer
+Complaint Management System. The application is designed to assist quality personnel
+with complaint intake, structured extraction, preliminary quality assessment,
+controlled corrections, investigation support, and explicit entry into a QMS ledger.
 
-The application is an assignment/demo system inspired by pharmaceutical Quality Management System (QMS) practices. It is not a validated regulated QMS and does not claim regulatory certification or compliance.
+This prototype helps reviewers prepare complaint records. It does not make final
+regulatory or product-disposition decisions.
 
-## 2. Problem statement
+## 2. Scope
 
-Pharmaceutical complaints frequently arrive as unstructured emails, pasted text, or PDF reports. QA personnel must manually identify the customer, product, batch, quantity, dates, defect, and potential quality impact before recording a complaint. Manual intake is slow, inconsistent, and susceptible to transcription errors.
+The system supports:
 
-## 3. Proposed solution
+- Manual pharmaceutical complaint entry
+- Text and email-style complaint intake
+- Selectable-text PDF intake
+- Structured complaint-field extraction
+- API and FDF product contexts
+- Preliminary quality and risk assessment
+- Conversational correction of allowlisted fields
+- Deterministic completeness assessment
+- Deterministic possible-duplicate detection
+- Advisory RCA/CAPA recommendations
+- Explicit human-reviewed commit to PostgreSQL
+- Retrieval of committed complaints
 
-The system accepts complaint text/email or a text-based PDF, extracts structured information using a Groq-hosted LLM orchestrated with LangGraph, populates a complaint form, produces an initial AI-assisted risk assessment, accepts conversational corrections, and saves the QA-reviewed complaint to a PostgreSQL QMS ledger.
+The system does not include production OCR, mailbox integration, authentication,
+electronic signatures, semantic duplicate matching, autonomous recall, final batch
+disposition, regulatory approval, or investigation closure.
 
-## 4. Objectives
+## 3. Users
 
-1. Reduce manual complaint-entry effort.
-2. Preserve product and batch traceability.
-3. Standardize initial complaint categorization and triage.
-4. Make missing information visible before commitment.
-5. Support both API and FDF complaint contexts.
-6. Keep authorised QA personnel responsible for final decisions.
-7. Maintain a clear, testable, and extensible implementation.
+### Primary user
 
-## 5. Definitions
+A pharmaceutical quality or complaint-handling professional who:
 
-| Term | Meaning |
-|---|---|
-| QMS/PQS | Pharmaceutical Quality Management/Quality System |
-| GMP | Good Manufacturing Practice |
-| API | Active Pharmaceutical Ingredient |
-| FDF | Finished Dosage Form |
-| QA | Quality Assurance |
-| CAPA | Corrective and Preventive Action |
-| OCR | Optical Character Recognition |
-| Complaint draft | Extracted or manually entered data not yet committed |
-| QMS ledger | PostgreSQL record of the reviewed complaint |
+- Receives complaint information
+- Reviews AI-extracted fields
+- Corrects incomplete or inaccurate information
+- Reviews preliminary assessment and investigation suggestions
+- Explicitly commits the reviewed complaint
 
-## 6. Product scope
+### Reviewer
 
-### Included
+A project reviewer or developer who verifies the workflow using fictional sample data,
+API documentation, automated tests, and the browser interface.
 
-- Manual complaint entry and review
-- Text/email complaint processing
-- Text-based PDF processing
-- API and FDF field extraction
-- Automatic form population
-- Complaint classification and initial risk assessment
-- Conversational field correction
-- Completeness checking
-- Possible duplicate detection
-- Root-cause and CAPA recommendations
-- PostgreSQL commitment, listing, and retrieval
-- Loading, validation, and failure states
+## 4. System context
 
-### Excluded
+```mermaid
+flowchart LR
+    User["Quality user"] --> UI["React complaint workspace"]
+    UI --> API["FastAPI"]
+    API --> AI["LangGraph and Groq"]
+    API --> Rules["Deterministic quality rules"]
+    API --> Repo["Complaint repository"]
+    Repo --> DB[("PostgreSQL")]
+```
 
-- Authentication and role-based access control
-- A complete enterprise QMS
-- Production-grade OCR or layout reconstruction
-- Electronic signatures and validated audit trails
-- Regulatory submissions
-- Autonomous batch disposition or product recall
-- Final investigation, confirmed root cause, or CAPA approval
-- Mobile application and microservices
+The backend currently uses Groq. The model is configured
+through `GROQ_MODEL`, with `openai/gpt-oss-120b` as the default. Deterministic fake
+providers are restricted to tests.
 
-## 7. Technology constraints
+The frontend models a quality-review workflow, but the current application does not
+authenticate users or enforce a QA role at the API boundary.
 
-| Layer | Required technology |
-|---|---|
-| Frontend | React, TypeScript, Vite |
-| State | Redux Toolkit |
-| Backend | Python and FastAPI |
-| AI orchestration | LangGraph |
-| LLM provider | Groq |
-| Database | PostgreSQL |
-| UI font | Google Inter |
+## 5. Functional requirements
 
-The Groq model is configured through `GROQ_MODEL`; the baseline default is `openai/gpt-oss-120b`. Secrets must remain in backend environment configuration.
+### 5.1 Health and readiness
 
-## 8. User and operating assumptions
+| ID     | Requirement                                                              |
+| ------ | ------------------------------------------------------------------------ |
+| FR-001 | The system shall expose `GET /health` for application liveness.          |
+| FR-002 | The system shall expose `GET /ready` and verify PostgreSQL connectivity. |
+| FR-003 | Health and readiness checks shall not call an external AI provider.      |
 
-- The primary user understands pharmaceutical complaint intake and reviews AI suggestions.
-- The user supplies complaint text or a readable text-based PDF.
-- Missing information may legitimately remain unknown during intake.
-- The application must not invent absent batch numbers, quantities, dates, customers, or sites.
-- Final quality decisions remain with authorised personnel.
+### 5.2 Manual complaint management
 
-## 9. Functional requirements
+| ID     | Requirement                                                                     |
+| ------ | ------------------------------------------------------------------------------- |
+| FR-010 | The user shall be able to enter and edit complaint fields manually.             |
+| FR-011 | The frontend shall validate required commit fields before submission.           |
+| FR-012 | The backend shall validate the complete commit payload.                         |
+| FR-013 | The system shall persist a complaint only after explicit commit.                |
+| FR-014 | A committed complaint shall receive a UUID and human-readable complaint number. |
+| FR-015 | The system shall list committed complaints with bounded pagination.             |
+| FR-016 | The system shall retrieve a committed complaint by UUID.                        |
 
-| ID | Requirement |
-|---|---|
-| FR-001 | The system shall display a structured Log Customer Complaint form. |
-| FR-002 | The system shall display the current workflow status. |
-| FR-003 | The system shall accept manual complaint entry. |
-| FR-004 | The system shall accept pasted complaint text or email. |
-| FR-005 | The system shall accept a PDF within configured type and size limits. |
-| FR-006 | The system shall extract selectable text from uploaded PDFs. |
-| FR-007 | The system shall return a clear error when no readable PDF text exists. |
-| FR-008 | The system shall process complaint text through a real LangGraph workflow. |
-| FR-009 | The system shall use the configured Groq model for structured AI output. |
-| FR-010 | The system shall distinguish API, FDF, and unknown product types. |
-| FR-011 | The system shall extract only information supported by the source. |
-| FR-012 | The system shall represent missing extracted information as null. |
-| FR-013 | The system shall validate all AI output using Pydantic schemas. |
-| FR-014 | The system shall populate the Redux-managed form from validated extraction. |
-| FR-015 | Null extraction values shall not erase existing non-empty user values. |
-| FR-016 | The user shall be able to review and manually edit all complaint fields. |
-| FR-017 | The system shall produce a structured complaint description. |
-| FR-018 | The system shall suggest a complaint category. |
-| FR-019 | The system shall suggest Minor, Major, or Critical severity. |
-| FR-020 | The system shall generate an initial risk assessment. |
-| FR-021 | The system shall generate a suggested next action. |
-| FR-022 | AI assessments shall display a human-review disclaimer. |
-| FR-023 | The Copilot shall accept conversational correction instructions. |
-| FR-024 | Corrections shall return and apply only allowed changed fields. |
-| FR-025 | Corrections shall preserve all fields not mentioned by the user. |
-| FR-026 | Dependent checks shall be recalculated after relevant corrections. |
-| FR-027 | The system shall prevent simultaneous duplicate processing/commit actions. |
-| FR-028 | The system shall commit only after explicit user action. |
-| FR-029 | Server-side validation shall run before commitment. |
-| FR-030 | The system shall generate a unique human-readable complaint number. |
-| FR-031 | The system shall save committed complaints in PostgreSQL transactionally. |
-| FR-032 | The system shall list complaints using deterministic pagination. |
-| FR-033 | The system shall retrieve a complaint by UUID. |
-| FR-034 | Failures shall preserve the draft and allow retry. |
-| FR-035 | Health and PostgreSQL-backed readiness endpoints shall be available. |
+### 5.3 Text and email-style intake
 
-## 10. Selected bonus requirements
+| ID     | Requirement                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------------- |
+| FR-020 | The user shall be able to paste complaint text for processing.                                    |
+| FR-021 | The backend shall reject blank or oversized text.                                                 |
+| FR-022 | LangGraph shall coordinate extraction, validation, assessment, completeness, and RCA/CAPA stages. |
+| FR-023 | Extracted fields shall populate an editable draft without automatic persistence.                  |
+| FR-024 | Missing information shall remain null rather than being presented as confirmed fact.              |
+| FR-025 | Complaint content shall be treated as untrusted data, not system instruction.                     |
 
-| ID | Requirement |
-|---|---|
-| BR-001 | The system shall report missing required and recommended complaint information. |
-| BR-002 | The completeness result shall update after manual or conversational corrections. |
-| BR-003 | The system shall search committed complaints for possible duplicates. |
-| BR-004 | Duplicate scoring shall consider product, batch, category, and description similarity. |
-| BR-005 | Duplicate matches shall include score and match reasons and shall not be final determinations. |
-| BR-006 | The system shall suggest potential root causes and investigation areas. |
-| BR-007 | The system shall suggest corrective and preventive actions separately. |
-| BR-008 | Root-cause and CAPA outputs shall be labelled as recommendations requiring QA review. |
+### 5.4 PDF intake
 
-## 11. Data requirements
+| ID     | Requirement                                                                                                            |
+| ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| FR-030 | The user shall be able to upload or drop a PDF complaint.                                                              |
+| FR-031 | The backend shall validate filename, content type, signature, size, page count, encryption, and extracted-text length. |
+| FR-032 | Selectable PDF text shall enter the same workflow as pasted text.                                                      |
+| FR-033 | A textless or scanned PDF shall return a clear validation error.                                                       |
+| FR-034 | A PDF-processing failure shall preserve the selected document and complaint draft where supported by the client.       |
+| FR-035 | Production-grade OCR is not required.                                                                                  |
 
-| Group | Fields |
-|---|---|
-| Origin/customer | Complaint source, customer name |
-| Product/batch | Product type, product name, strength/grade, batch/lot, quantity, manufacturing date, expiry/retest date |
-| Facility/material | Originating site/block, impacted non-product materials |
-| Defect | Complaint category, complaint description |
-| AI assessment | Suggested severity, risk assessment, suggested action |
-| System | UUID, complaint number, source type, status, raw input, timestamps |
+### 5.5 Structured extraction
 
-Partial pharmaceutical dates such as `March 2026` and explicit values such as `Not Provided` are preserved as text. Fields must have bounded lengths and whitespace-only required values are invalid.
+The system shall support these nullable extraction fields:
 
-## 12. Business rules
+- Complaint source
+- Customer name
+- Product type
+- Product name
+- Product strength or grade
+- Batch or lot number
+- Affected quantity
+- Manufacturing date
+- Expiry or retest date
+- Originating site or block
+- Impacted non-product materials
+- Complaint description
 
-| ID | Rule |
-|---|---|
-| BRULE-001 | Minimum manual commit data consists of customer, product, batch/lot, category, and description. |
-| BRULE-002 | Complaint numbers must be unique and concurrency-safe. |
-| BRULE-003 | A draft is not persisted by text, document, or correction processing alone. |
-| BRULE-004 | Unknown request fields are rejected where schemas require strict input. |
-| BRULE-005 | Missing source information must not be fabricated. |
-| BRULE-006 | Only allowlisted complaint fields may be updated conversationally. |
-| BRULE-007 | AI output is advisory and requires QA review. |
-| BRULE-008 | Database transactions are committed or rolled back as one unit. |
-| BRULE-009 | Potential duplicates are indicators, not final duplicate classifications. |
-| BRULE-010 | API keys and database credentials must never reach frontend code or responses. |
+| ID     | Requirement                                                                       |
+| ------ | --------------------------------------------------------------------------------- |
+| FR-040 | Product type shall be API, FDF, UNKNOWN, or null.                                 |
+| FR-041 | Provider output shall be parsed as JSON and validated by strict Pydantic schemas. |
+| FR-042 | Unknown output fields shall be rejected.                                          |
+| FR-043 | Invalid or malformed provider output shall not populate the draft.                |
+| FR-044 | The provider may receive at most one controlled malformed-output retry.           |
 
-## 13. External interfaces
+### 5.6 Quality and risk assessment
 
-### User interface
+| ID     | Requirement                                                                            |
+| ------ | -------------------------------------------------------------------------------------- |
+| FR-050 | Processing shall return a complaint category.                                          |
+| FR-051 | Processing shall recommend MINOR, MAJOR, or CRITICAL severity.                         |
+| FR-052 | Processing shall return a severity rationale.                                          |
+| FR-053 | Processing shall return an initial risk assessment.                                    |
+| FR-054 | Processing shall return a suggested next action.                                       |
+| FR-055 | Incomplete evidence shall produce NEEDS_INFORMATION with explicit gaps.                |
+| FR-056 | Assessment output shall always require human review.                                   |
+| FR-057 | The application shall replace provider disclaimer text with fixed application wording. |
 
-- Two-column complaint workspace and Copilot panel
-- Accessible labels and inline validation
-- Status, processing, success, and error states
-- Responsive desktop layout using Inter
+### 5.7 Conversational corrections
 
-### Backend API
+| ID     | Requirement                                                                                                |
+| ------ | ---------------------------------------------------------------------------------------------------------- |
+| FR-060 | The user shall be able to request corrections using natural language.                                      |
+| FR-061 | Only allowlisted complaint fields may be changed.                                                          |
+| FR-062 | Complaint UUID, number, status, timestamps, and other protected fields shall not be changed.               |
+| FR-063 | Ambiguous instructions shall request clarification without modifying the draft.                            |
+| FR-064 | Explicitly nullable fields may be cleared.                                                                 |
+| FR-065 | Unrelated fields shall remain unchanged.                                                                   |
+| FR-066 | Relevant changes shall trigger quality, completeness, duplicate, and RCA/CAPA recalculation as applicable. |
+| FR-067 | A failed correction shall preserve the current validated draft atomically.                                 |
+| FR-068 | Correction shall not persist the complaint automatically.                                                  |
 
-- JSON REST endpoints for text processing, correction, commitment, listing, and retrieval
-- Multipart endpoint for PDF processing
-- Standard error envelope
+### 5.8 Completeness
 
-### Groq
+| ID     | Requirement                                                                                                                      |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| FR-070 | Completeness shall be calculated deterministically.                                                                              |
+| FR-071 | Required fields shall be customer name, product name, batch/lot number, complaint category, and complaint description.           |
+| FR-072 | Completeness percentage shall equal the integer percentage of present required fields divided by the five total required fields. |
+| FR-073 | Placeholder or blank values shall count as missing.                                                                              |
+| FR-074 | Missing recommended fields shall provide guidance but shall not block manual commit.                                             |
 
-- Backend-only authenticated request
-- Environment-configured model
-- Structured response validated before use
+### 5.9 Duplicate detection
 
-### PostgreSQL
+| ID     | Requirement                                                                               |
+| ------ | ----------------------------------------------------------------------------------------- |
+| FR-080 | Duplicate detection shall retrieve a bounded set of recent PostgreSQL candidates.         |
+| FR-081 | Duplicate scoring shall be deterministic and database-independent.                        |
+| FR-082 | Results shall contain no more than five possible matches.                                 |
+| FR-083 | Batch, product, category, description, and quantity evidence may contribute to the score. |
+| FR-084 | Description similarity alone shall not identify a possible match.                         |
+| FR-085 | Duplicate results shall be advisory and require human review.                             |
 
-- Async SQLAlchemy access
-- Alembic migrations
-- Service-owned transaction boundary
+### 5.10 RCA/CAPA recommendations
 
-## 14. Non-functional requirements
+| ID     | Requirement                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------------- |
+| FR-090 | The system shall provide potential root-cause hypotheses with rationales and required evidence. |
+| FR-091 | The system shall provide investigation areas.                                                   |
+| FR-092 | The system shall provide advisory corrective and preventive actions.                            |
+| FR-093 | Root causes shall remain explicitly unconfirmed.                                                |
+| FR-094 | CAPA actions shall remain unapproved and unimplemented suggestions.                             |
+| FR-095 | The system shall reject prohibited final-decision language.                                     |
+| FR-096 | RCA/CAPA output shall be presented for human review.                                            |
 
-| ID | Requirement |
-|---|---|
-| NFR-001 | Source code shall maintain separation between UI, routes, services, repositories, AI, and document processing. |
-| NFR-002 | Python and TypeScript static checks shall pass. |
-| NFR-003 | Critical domain and API behaviour shall have automated tests. |
-| NFR-004 | The system shall use PostgreSQL integration tests for persistence behaviour. |
-| NFR-005 | Errors shall not expose secrets, prompts, stack traces, or provider internals. |
-| NFR-006 | Groq and database credentials shall use environment variables. |
-| NFR-007 | AI provider failures shall return controlled, retryable errors where appropriate. |
-| NFR-008 | The form shall preserve user input after recoverable failures. |
-| NFR-009 | Database changes shall use version-controlled migrations. |
-| NFR-010 | The UI shall be keyboard accessible and use associated labels. |
-| NFR-011 | The application shall build and run through Docker Compose. |
-| NFR-012 | Health shall remain independent from database readiness. |
-| NFR-013 | Logs shall contain operational context without secrets or unnecessary complaint content. |
-| NFR-014 | Automated AI tests shall use a deterministic fake provider by default. |
-| NFR-015 | Real Groq use shall be verified through separately controlled smoke tests. |
+## 6. API requirements
 
-## 15. AI safety requirements
+| Method | Endpoint                           | Purpose                                | Persistence        |
+| ------ | ---------------------------------- | -------------------------------------- | ------------------ |
+| GET    | `/health`                          | Application liveness                   | None               |
+| GET    | `/ready`                           | PostgreSQL readiness                   | None               |
+| POST   | `/api/complaints/process-text`     | Process pasted complaint text          | None               |
+| POST   | `/api/complaints/process-document` | Process a PDF complaint                | None               |
+| POST   | `/api/complaints/correct`          | Apply a conversational correction      | None               |
+| POST   | `/api/complaints/check-duplicates` | Check possible duplicates              | Read-only          |
+| POST   | `/api/complaints`                  | Explicitly commit a reviewed complaint | Inserts one record |
+| GET    | `/api/complaints`                  | List committed complaints              | Read-only          |
+| GET    | `/api/complaints/{complaint_id}`   | Retrieve one committed complaint       | Read-only          |
 
-- Complaint content is untrusted data, not system instruction.
-- Structured output is validated before reaching Redux or persistence.
-- At most one controlled retry is permitted for malformed structured output.
-- Authentication and permanent provider errors are not blindly retried.
-- The system does not confirm root cause, CAPA effectiveness, batch disposition, or recall.
-- The interface must state: **AI-generated intake and quality recommendations require review and approval by authorised QA personnel.**
+API failures shall use the standard envelope:
 
-## 16. Acceptance criteria
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Safe user-facing message",
+    "details": null
+  }
+}
+```
 
-| ID | Acceptance criterion |
-|---|---|
-| AC-001 | A valid manually entered complaint can be committed and retrieved after restart. |
-| AC-002 | Valid FDF text populates supported fields without inventing absent values. |
-| AC-003 | Valid API text populates API name, grade, batch, and quantity when present. |
-| AC-004 | A readable PDF follows the same processing path as pasted text. |
-| AC-005 | An unreadable PDF returns a clear non-destructive error. |
-| AC-006 | Risk category, severity, rationale, and next action validate and display. |
-| AC-007 | A conversational batch/quantity correction changes only those fields. |
-| AC-008 | Completeness warnings recalculate after correction. |
-| AC-009 | A similar saved complaint appears as a possible duplicate with reasons. |
-| AC-010 | Root-cause and CAPA recommendations are contextual and explicitly advisory. |
-| AC-011 | Backend, frontend, integration, build, and Docker gates pass. |
-| AC-012 | No secret is committed or returned to the client. |
+## 7. Data requirements
 
-## 17. Regulatory context
+The committed complaint ledger shall store:
 
-The workflow is informed by [ICH Q10 Pharmaceutical Quality System](https://database.ich.org/sites/default/files/Q10_Guideline.pdf), [ICH Q9(R1) Quality Risk Management](https://database.ich.org/sites/default/files/ICH_Q9%28R1%29_Guideline_Step4_2023_0126.pdf), [FDA/ICH Q7 API GMP guidance](https://www.fda.gov/regulatory-information/search-fda-guidance-documents/q7a-good-manufacturing-practice-guidance-active-pharmaceutical-ingredients), [21 CFR 211.198 complaint files](https://www.ecfr.gov/current/title-21/chapter-I/subchapter-C/part-211/subpart-J/section-211.198), and [EU GMP Chapter 8](https://health.ec.europa.eu/document/download/b1eb2292-cb0d-4e3f-aea9-e3fe79faf6e3_en?filename=2014-08_gmp_chap8.pdf). Applicability depends on organisation and jurisdiction.
+- UUID and generated complaint number
+- Source type
+- Customer and complaint source
+- Product type, name, strength, or grade
+- Batch or lot number and affected quantity
+- Manufacturing and expiry/retest dates
+- Site and non-product material context
+- Complaint category and description
+- Suggested severity
+- Initial risk assessment
+- Suggested next action
+- COMMITTED status
+- Creation and update timestamps
 
-## 18. Delivery status
+The database shall index complaint number, batch/lot number, normalized product name,
+and creation time. Complaint numbers shall be generated through a PostgreSQL sequence.
 
-- Sprint 0 foundation: implemented and verified
-- Sprint 1 manual QMS ledger: implemented and verified
-- Text/email AI intake, PDF intake, and initial quality assessment: implemented and verified
-- Conversational corrections and bonus capabilities: planned for subsequent controlled sprints
+## 8. Business rules
 
-This SRS is the final scope baseline; implementation status is maintained in `testing-and-sprints.md`.
+| ID     | Rule                                                                                                               |
+| ------ | ------------------------------------------------------------------------------------------------------------------ |
+| BR-001 | AI output is advisory and cannot represent final quality approval.                                                 |
+| BR-002 | Processing and correction shall never create a ledger record.                                                      |
+| BR-003 | Only explicit commit may insert a complaint.                                                                       |
+| BR-004 | The service owns commit and rollback; repositories do not independently commit.                                    |
+| BR-005 | Missing facts shall remain null or be listed as information gaps.                                                  |
+| BR-006 | Human-review flags and disclaimers are controlled by the application.                                              |
+| BR-007 | Final recall, release, rejection, batch disposition, investigation closure, or confirmed root cause is prohibited. |
+| BR-008 | Duplicate, completeness, and RCA/CAPA outputs are decision-support information only.                               |
+
+## 9. Non-functional requirements
+
+### Security and privacy
+
+- Secrets shall be loaded from ignored environment files or deployment variables.
+- API keys shall not be exposed through frontend bundles, health endpoints, logs, or
+  API errors.
+- SQL operations shall use SQLAlchemy parameterization.
+- File uploads and text input shall have configured bounds.
+- Complaint text and raw provider output shall not be logged unnecessarily.
+
+### Reliability
+
+- PostgreSQL readiness shall be checked independently of AI availability.
+- Database sessions and engines shall be cleaned up asynchronously.
+- Uploaded files and Groq clients shall be closed.
+- Controlled provider errors shall preserve the user’s draft.
+- Provider rate-limit and authentication failures shall not create retry loops.
+
+### Maintainability
+
+- Frontend, API, service, domain, repository, AI, document, and persistence
+  responsibilities shall remain separated.
+- Provider and repository contracts shall support deterministic test doubles.
+- Formatting, linting, strict typing, and automated tests shall remain part of the
+  quality gate.
+
+### Usability and accessibility
+
+- Critical inputs and actions shall have accessible labels.
+- Processing and commit actions shall prevent duplicate submission.
+- Errors shall use clear user-facing messages.
+- AI-generated content shall be visibly identified as requiring QA review.
+
+## 10. Deployment requirements
+
+Docker Compose shall provide:
+
+- PostgreSQL on port 5432
+- FastAPI backend on port 8000
+- Nginx-served React frontend on port 5173
+
+The backend shall wait for healthy PostgreSQL. The frontend shall depend on backend
+health. Environment configuration shall include:
+
+- `DATABASE_URL`
+- `GROQ_API_KEY`
+- `GROQ_MODEL`
+- `CORS_ORIGINS`
+- `MAX_UPLOAD_SIZE_MB`
+- `MAX_CORRECTION_INSTRUCTION_LENGTH`
+- `MAX_PDF_PAGES`
+- `MAX_PDF_TEXT_LENGTH`
+- `MAX_TEXT_INPUT_LENGTH`
+
+## 11. Acceptance criteria
+
+The system is acceptable when:
+
+1. Manual, text, and selectable-text PDF intake populate the editable form.
+2. API and FDF complaints are represented correctly.
+3. Quality, severity, risk, next-action, completeness, duplicate, and RCA/CAPA outputs
+   pass strict validation.
+4. Conversational correction supports updates, clarification, protected fields, and
+   explicit clearing without mutating unrelated data.
+5. Processing and correction leave the ledger count unchanged.
+6. Explicit commit inserts exactly one complaint.
+7. A committed complaint remains retrievable after backend restart.
+8. PostgreSQL and backend health checks pass.
+9. Backend and frontend static checks and tests pass.
+10. No credentials or generated artifacts are tracked.
+
+## 12. Constraints and limitations
+
+- A configured Groq account and available quota are required for real AI processing.
+- External provider availability and rate limits are outside application control.
+- PDF support is limited to readable selectable text.
+- Duplicate matching is deterministic, not semantic.
+- No production identity, access control, electronic signatures, or audit-signature
+  workflow is included.
+- No final regulatory decision is made by the application.
+- Users should review the draft before committing it and before any downstream quality
+  action.

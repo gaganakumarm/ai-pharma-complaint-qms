@@ -134,6 +134,9 @@ async def test_langgraph_executes_all_nodes_for_api_and_fdf(
         "validate_extraction",
         "assess_complaint_quality",
         "validate_quality_assessment",
+        "assess_completeness",
+        "recommend_rca_capa",
+        "validate_rca_capa",
         "prepare_response",
     ]
     assert result["extracted_complaint"].product_type.value == product_type

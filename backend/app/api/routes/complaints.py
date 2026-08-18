@@ -5,21 +5,56 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 
 from app.api.dependencies import (
     get_complaint_service,
+    get_correction_service,
     get_document_processing_service,
+    get_duplicate_service,
     get_text_processing_service,
 )
 from app.core.errors import ErrorResponse
 from app.schemas import ComplaintCreate, ComplaintResponse, PaginatedComplaintResponse
+from app.schemas.correction import (
+    ComplaintCorrectionRequest,
+    ComplaintCorrectionResponse,
+)
+from app.schemas.enhancements import DuplicateCheckRequest, DuplicateCheckResponse
 from app.schemas.extraction import (
     ProcessDocumentResponse,
     ProcessTextRequest,
     ProcessTextResponse,
 )
 from app.services.complaints import ComplaintNotFoundError, ComplaintService
+from app.services.correction_processing import ComplaintCorrectionService
 from app.services.documents import DocumentComplaintProcessingService
+from app.services.duplicates import DuplicateDetectionService
 from app.services.text_processing import TextComplaintProcessingService
 
 router = APIRouter(prefix="/api/complaints", tags=["complaints"])
+
+
+@router.post("/check-duplicates", response_model=DuplicateCheckResponse)
+async def check_duplicates(
+    payload: DuplicateCheckRequest,
+    service: Annotated[DuplicateDetectionService, Depends(get_duplicate_service)],
+) -> DuplicateCheckResponse:
+    return await service.check(payload)
+
+
+@router.post(
+    "/correct",
+    response_model=ComplaintCorrectionResponse,
+    responses={
+        422: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+        504: {"model": ErrorResponse},
+    },
+)
+async def correct_complaint(
+    payload: ComplaintCorrectionRequest,
+    service: Annotated[ComplaintCorrectionService, Depends(get_correction_service)],
+) -> ComplaintCorrectionResponse:
+    return await service.correct(payload)
 
 
 @router.post(

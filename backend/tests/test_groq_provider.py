@@ -7,6 +7,7 @@ from groq import AuthenticationError
 
 from app.ai.providers import GroqComplaintExtractionProvider
 from app.core.exceptions import MissingAIConfigurationError, ProviderAuthenticationError
+from app.schemas.correction import CorrectableComplaint
 from app.schemas.extraction import ExtractedComplaint
 from tests.test_text_processing import assessment, extraction
 
@@ -81,4 +82,43 @@ async def test_assessment_authentication_failure_does_not_retry(
     provider = GroqComplaintExtractionProvider("configured", "model")
     with pytest.raises(ProviderAuthenticationError):
         await provider.assess_complaint(ExtractedComplaint.model_validate(extraction()))
+    assert completions.calls == 1
+
+
+async def test_malformed_correction_gets_exactly_one_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    valid = {
+        "updates": [{"field": "batch_lot_number", "value": "BMX240602"}],
+        "clarification_required": False,
+        "clarification_question": None,
+    }
+    completions = FakeCompletions(["not-json", json.dumps(valid)])
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    monkeypatch.setattr("app.ai.providers.AsyncGroq", lambda **_kwargs: fake_client)
+    provider = GroqComplaintExtractionProvider("configured", "model")
+    current = dict.fromkeys(CorrectableComplaint.model_fields)
+    result = await provider.extract_correction(
+        CorrectableComplaint.model_validate(current), "Correct the batch"
+    )
+    assert result["updates"][0]["field"].value == "batch_lot_number"
+    assert completions.calls == 2
+
+
+async def test_correction_authentication_failure_does_not_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = httpx.Request("POST", "https://api.groq.com")
+    response = httpx.Response(401, request=request)
+    completions = FailingCompletions(
+        AuthenticationError("unauthorised", response=response, body=None)
+    )
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    monkeypatch.setattr("app.ai.providers.AsyncGroq", lambda **_kwargs: fake_client)
+    provider = GroqComplaintExtractionProvider("configured", "model")
+    current = dict.fromkeys(CorrectableComplaint.model_fields)
+    with pytest.raises(ProviderAuthenticationError):
+        await provider.extract_correction(
+            CorrectableComplaint.model_validate(current), "Change status to committed"
+        )
     assert completions.calls == 1

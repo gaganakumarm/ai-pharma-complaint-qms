@@ -4,7 +4,9 @@ import {
   commitComplaint,
   processComplaintDocument,
   processComplaintText,
+  correctComplaint,
 } from './api'
+import { getApiErrorDetails } from '../../shared/api/client'
 import type {
   ComplaintDraft,
   ComplaintRecord,
@@ -12,6 +14,9 @@ import type {
   ExtractedComplaint,
   SelectedDocument,
   ComplaintQualityAssessment,
+  CompletenessAssessment,
+  DuplicateMatch,
+  RcaCapaRecommendations,
 } from './types'
 
 export const initialDraft: ComplaintDraft = {
@@ -55,8 +60,19 @@ export interface ComplaintState {
     | 'succeeded'
     | 'failed'
   documentError: string | null
+  documentErrorRetryable: boolean
   documentWarnings: string[]
   qualityAssessment: ComplaintQualityAssessment | null
+  correctionInstruction: string
+  correctionStatus:
+    'idle' | 'processing' | 'succeeded' | 'clarification_required' | 'failed'
+  correctionError: string | null
+  changedFields: string[]
+  clarificationQuestion: string | null
+  completenessAssessment: CompletenessAssessment | null
+  possibleDuplicateMatches: DuplicateMatch[]
+  rcaCapaRecommendations: RcaCapaRecommendations | null
+  enhancementResultsStale: boolean
 }
 
 const initialState: ComplaintState = {
@@ -74,9 +90,49 @@ const initialState: ComplaintState = {
   selectedDocument: null,
   documentStatus: 'idle',
   documentError: null,
+  documentErrorRetryable: false,
   documentWarnings: [],
   qualityAssessment: null,
+  correctionInstruction: '',
+  correctionStatus: 'idle',
+  correctionError: null,
+  changedFields: [],
+  clarificationQuestion: null,
+  completenessAssessment: null,
+  possibleDuplicateMatches: [],
+  rcaCapaRecommendations: null,
+  enhancementResultsStale: false,
 }
+
+export const applyCorrection = createAsyncThunk(
+  'complaint/correct',
+  async (instruction: string, { getState, rejectWithValue }) => {
+    const state = (getState() as { complaint: ComplaintState }).complaint
+    if (!state.qualityAssessment)
+      return rejectWithValue('Process a complaint first')
+    try {
+      return await correctComplaint(
+        state.draft,
+        state.qualityAssessment,
+        instruction,
+        state.completenessAssessment,
+        state.possibleDuplicateMatches,
+        state.rcaCapaRecommendations,
+      )
+    } catch (error) {
+      return rejectWithValue(
+        typeof error === 'object' && error !== null && 'message' in error
+          ? String(error.message)
+          : 'Unable to apply correction',
+      )
+    }
+  },
+  {
+    condition: (_instruction, { getState }) =>
+      (getState() as { complaint: ComplaintState }).complaint
+        .correctionStatus !== 'processing',
+  },
+)
 
 function applyAssessment(
   state: ComplaintState,
@@ -90,17 +146,127 @@ function applyAssessment(
   state.draft.suggestedNextAction = assessment.suggested_next_action
 }
 
-export const processDocumentComplaint = createAsyncThunk(
+function beginNewIntake(state: ComplaintState) {
+  state.correctionInstruction = ''
+  state.correctionStatus = 'idle'
+  state.correctionError = null
+  state.changedFields = []
+  state.clarificationQuestion = null
+  state.requestStatus = 'idle'
+  state.savedRecord = null
+  state.error = null
+  state.completenessAssessment = null
+  state.possibleDuplicateMatches = []
+  state.rcaCapaRecommendations = null
+  state.enhancementResultsStale = false
+}
+
+const requiredDraftFields: Array<keyof ComplaintDraft> = [
+  'customerName',
+  'productName',
+  'batchLotNumber',
+  'complaintCategory',
+  'complaintDescription',
+]
+const placeholders = new Set([
+  '',
+  'n/a',
+  'na',
+  'none',
+  'not applicable',
+  'not available',
+  'not provided',
+  'unknown',
+  'unavailable',
+])
+const fieldApiNames: Partial<Record<keyof ComplaintDraft, string>> = {
+  customerName: 'customer_name',
+  productName: 'product_name',
+  batchLotNumber: 'batch_lot_number',
+  complaintCategory: 'complaint_category',
+  complaintDescription: 'complaint_description',
+}
+const relevantEnhancementFields = new Set<keyof ComplaintDraft>([
+  'productType',
+  'productName',
+  'productStrengthGrade',
+  'batchLotNumber',
+  'affectedQuantity',
+  'manufacturingDate',
+  'expiryRetestDate',
+  'originatingSiteBlock',
+  'impactedNonProductMaterials',
+  'complaintCategory',
+  'complaintDescription',
+  'suggestedSeverity',
+  'initialRiskAssessment',
+])
+
+function meaningful(value: string) {
+  return !placeholders.has(value.trim().toLowerCase().replace(/\.$/, ''))
+}
+
+function recalculateCompleteness(state: ComplaintState) {
+  const missing = requiredDraftFields.filter(
+    (field) => !meaningful(state.draft[field]),
+  )
+  const present = requiredDraftFields.length - missing.length
+  const recommended: Array<[keyof ComplaintDraft, string]> = [
+    ['complaintSource', 'complaint_source'],
+    ['affectedQuantity', 'affected_quantity'],
+    ['manufacturingDate', 'manufacturing_date'],
+    ['expiryRetestDate', 'expiry_retest_date'],
+    ['originatingSiteBlock', 'originating_site_block'],
+    ['impactedNonProductMaterials', 'impacted_non_product_materials'],
+  ]
+  if (state.draft.productType === 'FDF' || state.draft.productType === 'API')
+    recommended.push(['productStrengthGrade', 'product_strength_grade'])
+  state.completenessAssessment = {
+    status: missing.length ? 'NEEDS_INFORMATION' : 'COMPLETE',
+    required_fields_present: present,
+    total_required_fields: requiredDraftFields.length,
+    completeness_percentage: Math.floor(
+      (present * 100) / requiredDraftFields.length,
+    ),
+    missing_required_fields: missing.map((field) => fieldApiNames[field]!),
+    missing_recommended_fields: recommended
+      .filter(([field]) => !meaningful(state.draft[field]))
+      .map(([, name]) => name),
+    guidance: missing.length
+      ? 'Provide the missing required information before manual commit.'
+      : 'All required commit fields are present. Review recommended gaps and the full draft before manual commit.',
+  }
+}
+
+function applyEnhancements(
+  state: ComplaintState,
+  payload: {
+    completeness_assessment?: CompletenessAssessment
+    possible_duplicate_matches?: DuplicateMatch[]
+    rca_capa_recommendations?: RcaCapaRecommendations
+  },
+) {
+  if (!payload.completeness_assessment || !payload.rca_capa_recommendations)
+    return
+  state.completenessAssessment = payload.completeness_assessment
+  state.possibleDuplicateMatches = payload.possible_duplicate_matches ?? []
+  state.rcaCapaRecommendations = payload.rca_capa_recommendations
+  state.enhancementResultsStale = false
+}
+
+export const processDocumentComplaint = createAsyncThunk<
+  Awaited<ReturnType<typeof processComplaintDocument>>,
+  File,
+  { rejectValue: { message: string; retryable: boolean } }
+>(
   'complaint/processDocument',
   async (file: File, { rejectWithValue }) => {
     try {
       return await processComplaintDocument(file)
     } catch (error) {
-      const message =
-        typeof error === 'object' && error !== null && 'message' in error
-          ? String(error.message)
-          : 'Unable to process PDF complaint'
-      return rejectWithValue(message)
+      return rejectWithValue(
+        getApiErrorDetails(error, 'Unable to process PDF complaint'),
+      )
     }
   },
   {
@@ -183,6 +349,9 @@ const complaintSlice = createSlice({
     ) => {
       const { field, value } = action.payload
       ;(state.draft[field] as string) = value
+      if (state.completenessAssessment) recalculateCompleteness(state)
+      if (relevantEnhancementFields.has(field))
+        state.enhancementResultsStale = true
       state.requestStatus = 'idle'
       state.error = null
     },
@@ -191,16 +360,22 @@ const complaintSlice = createSlice({
       state.copilotInput = action.payload
       state.processingError = null
     },
+    updateCorrectionInstruction: (state, action: { payload: string }) => {
+      state.correctionInstruction = action.payload
+      state.correctionError = null
+    },
     selectDocument: (state, action: { payload: SelectedDocument }) => {
       state.selectedDocument = action.payload
       state.documentStatus = 'selected'
       state.documentError = null
+      state.documentErrorRetryable = false
       state.documentWarnings = []
     },
     removeDocument: (state) => {
       state.selectedDocument = null
       state.documentStatus = 'idle'
       state.documentError = null
+      state.documentErrorRetryable = false
       state.documentWarnings = []
     },
   },
@@ -224,6 +399,7 @@ const complaintSlice = createSlice({
         )
       })
       .addCase(processTextComplaint.pending, (state) => {
+        beginNewIntake(state)
         state.processingStatus = 'processing'
         state.processingError = null
         state.warnings = []
@@ -252,6 +428,7 @@ const complaintSlice = createSlice({
           if (value !== null) (state.draft[target] as string) = value
         }
         applyAssessment(state, action.payload.quality_assessment)
+        applyEnhancements(state, action.payload)
       })
       .addCase(processTextComplaint.rejected, (state, action) => {
         if (action.meta.condition) return
@@ -263,8 +440,10 @@ const complaintSlice = createSlice({
         )
       })
       .addCase(processDocumentComplaint.pending, (state) => {
+        beginNewIntake(state)
         state.documentStatus = 'uploading'
         state.documentError = null
+        state.documentErrorRetryable = false
         state.documentWarnings = []
       })
       .addCase(processDocumentComplaint.fulfilled, (state, action) => {
@@ -290,14 +469,61 @@ const complaintSlice = createSlice({
           if (value !== null) (state.draft[target] as string) = value
         }
         applyAssessment(state, action.payload.quality_assessment)
+        applyEnhancements(state, action.payload)
       })
       .addCase(processDocumentComplaint.rejected, (state, action) => {
         if (action.meta.condition) return
         state.documentStatus = 'failed'
-        state.documentError = String(
+        state.documentError =
+          action.payload?.message ??
+          action.error.message ??
+          'Unable to process PDF complaint'
+        state.documentErrorRetryable = action.payload?.retryable ?? true
+      })
+      .addCase(applyCorrection.pending, (state) => {
+        state.correctionStatus = 'processing'
+        state.correctionError = null
+      })
+      .addCase(applyCorrection.fulfilled, (state, action) => {
+        const response = action.payload
+        state.correctionStatus =
+          response.status === 'CLARIFICATION_REQUIRED'
+            ? 'clarification_required'
+            : 'succeeded'
+        state.changedFields = response.changed_fields
+        state.clarificationQuestion = response.patch.clarification_question
+        state.warnings = response.warnings
+        state.conversation.push(
+          {
+            id: `${Date.now()}-correction-user`,
+            role: 'user',
+            content: state.correctionInstruction,
+          },
+          {
+            id: `${Date.now()}-correction-assistant`,
+            role: 'assistant',
+            content: response.assistant_message,
+          },
+        )
+        for (const [source, target] of Object.entries(extractionMap) as Array<
+          [keyof ExtractedComplaint, keyof ComplaintDraft]
+        >) {
+          ;(state.draft[target] as string) =
+            response.updated_complaint[source] ?? ''
+        }
+        state.draft.complaintCategory =
+          response.updated_complaint.complaint_category ?? ''
+        applyAssessment(state, response.quality_assessment)
+        applyEnhancements(state, response)
+        state.correctionInstruction = ''
+      })
+      .addCase(applyCorrection.rejected, (state, action) => {
+        if (action.meta.condition) return
+        state.correctionStatus = 'failed'
+        state.correctionError = String(
           action.payload ??
             action.error.message ??
-            'Unable to process PDF complaint',
+            'Unable to apply correction',
         )
       })
   },
@@ -308,6 +534,7 @@ export const {
   resetComplaintDraft,
   selectDocument,
   updateCopilotInput,
+  updateCorrectionInstruction,
   updateDraftField,
 } = complaintSlice.actions
 export const complaintReducer = complaintSlice.reducer

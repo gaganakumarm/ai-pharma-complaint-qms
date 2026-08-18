@@ -1,265 +1,232 @@
-# Testing Strategy and Sprint Record
+# Test Report
 
-## 1. Purpose
+## 1. Scope and status
 
-This document defines the project’s testing approach, quality gates, sprint sequence, and evolving verification record. The strategy remains stable; sprint status and exact results are updated after each accepted sprint.
-
-## 2. Testing principles
+This report lists what was rerun in the current workspace and which results come from
+earlier project testing. Live Groq tests were not repeated because they use external
+quota.
 
-- Test behaviour and contracts, not internal implementation details.
-- Use real PostgreSQL for persistence integration tests.
-- Use a deterministic fake Groq provider for automated AI tests.
-- Test AI schema validity rather than exact generated wording.
-- Keep each sprint independently testable and reviewable.
-- Do not advance while the current acceptance gate is failed.
-- Preserve user input during recoverable failures.
-
-## 3. Toolset
-
-| Area | Tools |
-|---|---|
-| Backend unit/API | Pytest, pytest-asyncio, HTTPX |
-| Database integration | Dedicated PostgreSQL test service/container |
-| AI automation | Fake provider, LangGraph node/graph tests |
-| Real AI verification | Controlled Groq smoke tests |
-| Frontend | Vitest, React Testing Library, user-event |
-| Frontend API mocking | MSW when introduced |
-| Browser acceptance | Automated Microsoft Edge/Playwright-style flow as configured |
-| Manual API | Thunder Client, Swagger UI |
-| Python quality | Ruff, strict MyPy |
-| Frontend quality | ESLint, Prettier, TypeScript compiler |
-| Security/dependencies | `npm audit`, production-only audit |
-| Runtime | Docker Compose health and readiness |
-| CI | GitHub Actions |
-
-## 4. Test levels
-
-### Unit tests
-
-Cover pure validation, normalization, completeness, correction merge, duplicate scoring, schemas, reducers, and utilities.
-
-### Integration tests
-
-Cover FastAPI routes, service/repository collaboration, PostgreSQL constraints, transactions, migrations, LangGraph composition, and frontend API-state integration.
-
-### End-to-end tests
-
-Cover the critical user workflows through the running frontend, backend, and PostgreSQL stack.
-
-### Manual smoke tests
-
-Thunder Client verifies individual endpoints. Real Groq smoke tests verify live model/schema compatibility without making CI depend on credentials or rate limits.
-
-## 5. Critical test inventory
-
-### Ledger and database
+Documentation review date: **August 18, 2026**. Add the final Git commit SHA after the
+submission commit is created.
 
-- Schema trimming and blank rejection
-- Enum and unknown-field validation
-- Concurrency-safe unique complaint numbers
-- Insert, retrieve, pagination, and ordering
-- Partial pharmaceutical date preservation
-- Constraint enforcement
-- Transaction rollback without partial rows
-- Migration on empty database
-- Persistence after backend restart
-
-### Text and PDF intake
+Tests and demonstrations use only fictional API and FDF complaint data.
 
-- Valid API and FDF extraction contracts
-- Incomplete complaint retains null values
-- Batch identifiers are preserved exactly
-- Blank/oversized input rejection
-- Valid multipage text PDF
-- Unsupported, oversized, corrupt, and textless PDF errors
-- Processing does not create a ledger row
+## 2. Test environment
 
-### LangGraph and Groq
+| Area            | Tools and configuration                             |
+| --------------- | --------------------------------------------------- |
+| Backend         | Python 3.11+, FastAPI, Pydantic, LangGraph          |
+| Database        | PostgreSQL 16, async SQLAlchemy, asyncpg, Alembic   |
+| Frontend        | React, TypeScript, Vite, Redux Toolkit              |
+| Backend tests   | Pytest, pytest-asyncio, HTTPX                       |
+| Frontend tests  | Vitest, React Testing Library, user-event           |
+| Static analysis | Ruff, strict MyPy, ESLint, Prettier, TypeScript     |
+| Runtime         | Docker Compose: PostgreSQL, FastAPI, Nginx frontend |
+| AI              | Groq at runtime; predictable fake provider in tests |
 
-- Expected node execution
-- Valid state transitions
-- Pydantic structured-output validation
-- One controlled malformed-output retry
-- No inappropriate retry for authentication failure
-- Timeout and rate-limit mapping
-- Prompt-injection text treated as complaint data
-- Fake-provider automated tests
-- Separate live-model smoke tests
+## 3. Level 1 — Backend static checks
 
-### Assessment and corrections
+Run from `backend`:
 
-- Severity enum validation
-- Risk contract and disclaimer
-- One-field and multi-field correction
-- Unrelated fields remain unchanged
-- Unknown/protected fields are rejected
-- Relevant analysis recalculates after corrections
-- Failed correction preserves the draft
-
-### Selected bonuses
+```powershell
+ruff check .
+ruff format --check .
+mypy app
+```
 
-- Required/recommended missing fields
-- Completeness recalculation
-- Duplicate score range, ranking, and reasons
-- Self-match exclusion
-- Root-cause/CAPA schema and disclaimer
+| Check       | Recorded result                        |
+| ----------- | -------------------------------------- |
+| Ruff lint   | Passed with no violations              |
+| Ruff format | Passed                                 |
+| Strict MyPy | Passed for 39 application source files |
 
-### Frontend
+MyPy covers the application source. Test files are not part of this type-check command.
 
-- Complete accessible form rendering
-- Required validation
-- Redux draft updates
-- Status transitions
-- Automatic population
-- Null results do not erase values
-- Loading, error, retry, and reset behaviour
-- Duplicate-submit prevention
-- Commit success and complaint number
-- Responsive, unclipped layout
+## 4. Level 2 — Backend automated tests
+
+### Default unit and API suite
 
-## 6. Real Groq smoke scenarios
-
-1. FDF discoloration complaint
-2. API foreign-matter complaint
-3. Incomplete complaint
-4. Conversational batch/quantity correction
-5. Embedded instruction attempting to alter extraction
-
-Assertions focus on schema validity, evidence preservation, null handling, safe errors, and identifier accuracy—not exact prose.
-
-## 7. Sprint acceptance process
-
-1. Inspect repository and Git status.
-2. Implement only the sprint scope.
-3. Add or update relevant tests.
-4. Run Python lint, format, typing, and tests.
-5. Run frontend lint, format, typing, tests, audit, and build.
-6. Validate migrations and PostgreSQL integration.
-7. Rebuild and start Docker Compose.
-8. Verify health, readiness, and container logs.
-9. Run Thunder Client and browser acceptance.
-10. Fix all failures and rerun affected gates.
-11. Report exact evidence and known limitations.
-12. Mark PASSED or FAILED.
-13. Commit only after PASS.
-
-## 8. Sprint record
-
-### Sprint 0 — Foundation — PASSED
-
-Delivered React/Redux, FastAPI, PostgreSQL, Docker Compose, settings, health/readiness, CI, linting, typing, and baseline tests. Docker build contexts were reduced to exclude dependencies and artifacts. Dependency audits reported zero vulnerabilities. PostgreSQL-backed readiness was verified.
-
-### Sprint 1 — Complaint domain and QMS ledger — PASSED
-
-Delivered the complete manual form, Redux draft, Zod/React Hook Form validation, API/service/repository layers, SQLAlchemy model, Alembic migration, sequence-based complaint numbers, commit/list/detail endpoints, Thunder Client collection, and browser acceptance.
-
-Recorded evidence:
-
-- Backend: 16 tests passed
-- Frontend: 3 test files and 6 tests passed
-- Migration upgrade, downgrade, and re-upgrade passed
-- PostgreSQL integration and rollback passed
-- Browser status flow: Pending Triage → Ready to Commit → COMMITTED
-- `CMP-2026-000002` remained retrievable after backend restart
-- Static checks, production build, audits, and Docker health passed
-
-### Sprint 2 — Text/email AI intake — PASSED
-
-**Objective:** LangGraph + Groq structured extraction and form population.
-
-Recorded evidence: backend Ruff/format/MyPy passed; 37 tests passed and 4 live tests
-were skipped by default; all 4 real Groq smoke cases passed; frontend lint, format,
-typing, 10 tests, build, and both npm audits passed; Docker health/readiness and browser
-commit/restart verification passed; ledger count was unchanged by text processing.
-
-### Sprint 3 — PDF intake — PASSED
-
-**Objective:** File validation and basic selectable-text extraction using the same graph.
-
-Recorded evidence: Ruff and format passed; strict MyPy passed for all 46 backend source
-and test files; 58 tests passed with 7 credential-gated live tests skipped; all 3 real
-PDF/Groq smoke tests passed. Frontend lint, format, typing, 14 tests, production build,
-and both npm audits passed. FDF/API browser extraction, controlled textless failure,
-explicit PDF commit, backend restart retrieval, Docker health, and PostgreSQL readiness
-passed. PDF processing was proven not to change the ledger count. Production OCR was
-not added.
-
-### Sprint 4 — Mandatory quality assessment — PASSED
-
-**Objective:** Category, severity, initial risk assessment, and suggested next action.
-
-Recorded evidence: Ruff and format passed; strict MyPy passed for 49 backend source and
-test files; 80 PostgreSQL-backed tests passed with 13 credential-gated live tests
-skipped; migrations passed. Nine real assessment/PDF Groq scenarios passed and the four
-text/Groq regression scenarios passed. Frontend lint, format, typing, 16 tests, build,
-and both npm audits passed. Browser acceptance verified assessed FDF/API inputs,
-NEEDS_INFORMATION handling, trusted disclaimer, editable fields, textless-PDF draft
-preservation, explicit commit, non-persistence before commit, and restart retrieval.
-Docker health, PostgreSQL readiness, frontend HTTP, and logs passed.
-
-### Sprint 5 — Conversational corrections
-
-**Objective:** Allowlisted field patches that preserve unrelated data.
-
-**Gate:** Demo correction cases pass, relevant checks recalculate, and malformed corrections cannot damage the draft.
-
-### Sprint 6 — Selected bonuses
-
-**Objective:** Completeness, duplicate detection, and root-cause/CAPA recommendations.
-
-**Gate:** All three features work in API/FDF scenarios and display appropriate uncertainty/review language.
-
-### Sprint 7 — Hardening
-
-**Objective:** Full regression, robustness, security, accessibility, and failure recovery.
-
-**Gate:** All backend/frontend/integration/E2E/build/Docker checks pass with no secrets or critical dependency findings.
-
-### Sprint 8 — Submission
-
-**Objective:** Final README, screenshots, sample documents, product demo, and code walkthrough.
-
-**Gate:** Clean-environment setup works and every submission link/file is verified before the deadline.
-
-## 9. Requirement tracking
-
-| Capability | Type | Sprint | Status |
-|---|---|---:|---|
-| React, Redux, Inter UI | Mandatory | 0–1 | Implemented |
-| FastAPI and PostgreSQL | Mandatory | 0–1 | Implemented |
-| Manual form and ledger | Mandatory workflow | 1 | Implemented |
-| Groq and LangGraph | Mandatory | 2 | Implemented |
-| Text/email intake | Mandatory | 2 | Implemented |
-| PDF intake | Mandatory | 3 | Implemented |
-| Category/risk/next action | Mandatory | 4 | Implemented |
-| Conversational correction | Mandatory | 5 | Update after Sprint 5 |
-| Completeness checker | Bonus | 6 | Update after Sprint 6 |
-| Duplicate detection | Bonus | 6 | Update after Sprint 6 |
-| Root-cause/CAPA | Bonus | 6 | Update after Sprint 6 |
-
-## 10. Final submission checklist
-
-- [ ] Repository is clean and pushed
-- [ ] No credentials or private `.env` files are committed
-- [ ] Migrations work on a fresh PostgreSQL database
-- [ ] All automated and integration tests pass
-- [ ] Docker Compose starts all healthy services
-- [ ] API and FDF text scenarios pass with real Groq
-- [ ] PDF scenario passes
-- [ ] Corrections preserve unrelated fields
-- [ ] All three bonus features pass
-- [ ] README setup works from a clean environment
-- [ ] Thunder Client collection contains no secrets
-- [ ] Product demonstration video is recorded
-- [ ] Code walkthrough video is recorded
-- [ ] Submission form is completed before the deadline
-
-## 11. Update policy
-
-After each sprint, update only:
-
-- Sprint status and exact verification evidence
-- Requirement-tracking status
-- Final checklist items when complete
-
-Do not rewrite historical pass evidence without a documented reason.
+```powershell
+pytest
+```
+
+Rerun result from the project `backend/.venv` on August 18, 2026:
+
+```text
+107 passed, 28 skipped
+```
+
+Skips are expected for credential- and PostgreSQL-gated cases when their flags or
+database URL are absent. Coverage includes schemas, service/repository boundaries,
+text and PDF workflows, quality/risk assessment, completeness, duplicate scoring,
+corrections, RCA/CAPA safety, error mapping, retry behavior, prompt-injection
+resistance, frontend review behavior, and confirmation that processing does not write
+to the database. The current application does not authenticate or authorize a QA
+reviewer at the API boundary.
+
+### Isolated PostgreSQL integration suite
+
+```powershell
+Set-Location ..
+docker compose --profile test up -d postgres_test
+$env:TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5433/pharma_qms_test"
+Set-Location backend
+pytest
+Remove-Item Env:TEST_DATABASE_URL
+```
+
+Recorded release result; requires the isolated PostgreSQL test profile to reproduce:
+
+```text
+115 passed, 20 skipped
+```
+
+The remaining skips are credential-gated provider tests. PostgreSQL coverage includes
+inserts and retrieval, complaint-number uniqueness, rollback, pagination, ordering,
+enum constraints, bounded duplicate queries, self-exclusion, no database writes during
+processing, and complaint commit.
+
+## 5. Level 3 — Database migration tests
+
+Migration verification used only the isolated test database. No development database
+was downgraded.
+
+Verified sequence:
+
+1. Upgrade an empty test database to Alembic head.
+2. Downgrade the isolated database to base.
+3. Upgrade it to head again.
+4. Re-run the head upgrade to verify current-state behavior.
+5. Restart the backend normally and retrieve an existing record.
+
+Recorded result: **PASSED**. The PostgreSQL enums, complaint-number sequence, table,
+constraints, and indexes match [database-design.md](database-design.md).
+
+## 6. Level 4 — Frontend tests
+
+Run from `frontend`:
+
+```powershell
+npm audit
+npm audit --omit=dev
+npm run lint
+npm run format
+npm run typecheck
+npm test
+npm run build
+```
+
+`npm run format` invokes the non-mutating `prettier --check .` script.
+
+Recorded results:
+
+```text
+22 tests passed across 4 files
+0 npm vulnerabilities
+Production build passed
+```
+
+ESLint, Prettier, and TypeScript also passed. Tests cover form validation, Redux draft
+state, text/PDF population, assessment and correction states, completeness,
+duplicates, RCA/CAPA, stale-result and failure handling, duplicate-submission
+prevention, and commit behavior.
+
+## 7. Level 5 — API and infrastructure tests
+
+```powershell
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps
+curl.exe http://localhost:5173
+curl.exe http://localhost:8000/health
+curl.exe http://localhost:8000/ready
+curl.exe "http://localhost:8000/api/complaints?page=1&page_size=5"
+curl.exe "http://localhost:8000/api/complaints/7f94a4c6-d200-459f-acb3-bf0e3c02d44f"
+```
+
+| Check                        | Recorded result                                       |
+| ---------------------------- | ----------------------------------------------------- |
+| Docker Compose configuration | Passed                                                |
+| PostgreSQL                   | Healthy                                               |
+| Backend                      | Healthy                                               |
+| Frontend                     | HTTP 200                                              |
+| `GET /health`                | HTTP 200, `{"status":"ok"}`                           |
+| `GET /ready`                 | HTTP 200, `{"status":"ready"}` via Compose PostgreSQL |
+| Complaint listing            | HTTP 200                                              |
+| Recent service logs          | No release-blocking runtime errors                    |
+
+These infrastructure results come from an earlier full-stack run. Complaint identifiers
+and row counts are omitted because they depend on the local database.
+
+## 8. Level 6 — Manual end-to-end test
+
+An earlier browser run used fictional samples and the fake test provider. It verified:
+
+1. FDF PDF extraction into editable fields.
+2. API/FDF classification and quality/risk assessment.
+3. Completeness, duplicate, and RCA/CAPA panels.
+4. Conversational batch and quantity correction with recalculation.
+5. Preservation of unrelated values, protected fields, and field clearing.
+6. No ledger change during processing or correction.
+7. Exactly one new database record after commit.
+8. Retrieval of the newly committed complaint by UUID.
+9. API PDF assessment without automatic persistence.
+10. Text-intake regression.
+11. Controlled textless-PDF failure with draft preservation.
+12. Backend restart and successful retrieval of the committed record.
+
+Earlier result: **Passed**.
+
+## 9. Real Groq compatibility evidence
+
+Credential-gated checks previously validated FDF/API extraction, quality/risk
+assessment, corrections, RCA/CAPA, null preservation, prompt-injection protection,
+and application-supplied review disclaimers. Earlier smoke tests also covered fictional
+FDF and API RCA/CAPA responses. These tests do not imply authenticated QA approval.
+
+```env
+GROQ_MODEL=openai/gpt-oss-120b
+```
+
+The live-provider suite was not rerun for this documentation change. HTTP 429 means the
+Groq quota was exhausted; the application does not retry that response or write a
+complaint. Earlier correction scenarios passed, while a later complete browser rerun
+was stopped by HTTP 429. GPT-OSS 20B did not satisfy the response schemas, and the
+Gemini experiment is not part of the current code or configuration.
+
+## 10. Security and repository checks
+
+Release checks:
+
+```powershell
+git diff --check
+git status
+git check-ignore .env
+git grep -n -E "gsk_[A-Za-z0-9]|GEMINI_API_KEY=.{10,}|GROQ_API_KEY=.{10,}"
+```
+
+An earlier repository check confirmed that `.env` was ignored, no API key was tracked,
+and generated caches, builds, and local databases were not tracked.
+
+For the August 18, 2026 documentation update, the default backend suite, Ruff lint,
+Ruff format, strict application MyPy, frontend tests, ESLint, and the TypeScript
+production build were rerun. PostgreSQL, Compose, browser, migration, vulnerability
+audit, and real-provider checks were not rerun.
+
+## 11. Final summary
+
+| Check                                            | Result                            |
+| ------------------------------------------------ | --------------------------------- |
+| Ruff, format, strict application MyPy            | Passed on August 18, 2026         |
+| Default Pytest: 107 passed, 28 expected skips    | Passed on August 18, 2026         |
+| Frontend lint, 22 tests, and production build    | Passed on August 18, 2026         |
+| PostgreSQL Pytest: 115 passed, 20 expected skips | Earlier result; not rerun         |
+| Isolated Alembic downgrade/upgrade/re-upgrade    | Earlier result; not rerun         |
+| Compose, health, readiness, retrieval, and logs  | Earlier result; not rerun         |
+| Fictional browser workflow                       | Earlier result; not rerun         |
+| Live Groq workflow                               | Earlier partial result; quota hit |
+
+The default backend suite and static checks plus the frontend test, lint, and build
+checks were rerun on August 18, 2026. Other rows record earlier release evidence and
+do not claim a new PostgreSQL, Compose, browser, migration, vulnerability-audit, or
+real-provider run.

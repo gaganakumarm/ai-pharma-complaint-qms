@@ -7,13 +7,16 @@ import asyncpg
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.ai.correction_graph import build_correction_graph
 from app.ai.graph import build_complaint_graph
-from app.api.dependencies import get_document_processing_service
+from app.api.dependencies import get_correction_service, get_document_processing_service
 from app.core.config import Settings
 from app.main import create_app
+from app.services.correction_processing import ComplaintCorrectionService
 from app.services.documents import DocumentComplaintProcessingService, PdfTextExtractor
 from app.services.text_processing import TextComplaintProcessingService
 from tests.pdf_factory import make_pdf
+from tests.test_correction_api import Provider as CorrectionProvider
 from tests.test_text_processing import FakeProvider, extraction
 
 pytestmark = pytest.mark.skipif(
@@ -58,6 +61,11 @@ async def pg_client() -> AsyncIterator[AsyncClient]:
         text_service, PdfTextExtractor(), 1_000_000, 1, 10, 2000
     )
     app.dependency_overrides[get_document_processing_service] = lambda: document_service
+    correction_provider = CorrectionProvider()
+    correction_service = ComplaintCorrectionService(
+        build_correction_graph(correction_provider, 2000), correction_provider
+    )
+    app.dependency_overrides[get_correction_service] = lambda: correction_service
     async with app.router.lifespan_context(app):
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
@@ -93,6 +101,34 @@ async def test_create_retrieve_and_number_uniqueness(pg_client: AsyncClient) -> 
     assert retrieved.json()["initial_risk_assessment"] == (
         "Potential primary packaging quality impact."
     )
+
+
+async def test_bounded_duplicate_candidates_and_self_exclusion(
+    pg_client: AsyncClient,
+) -> None:
+    created = await pg_client.post(
+        "/api/complaints", json=valid_payload("sprint6-duplicate")
+    )
+    assert created.status_code == 201
+    record = created.json()
+    before = (await pg_client.get("/api/complaints?page=1&page_size=1")).json()["total"]
+    payload = {
+        "product_name": "Paracetamol 500 mg",
+        "batch_lot_number": "LOT sprint6 duplicate",
+        "complaint_category": "Packaging",
+        "complaint_description": "Blister seal was damaged on receipt.",
+    }
+    response = await pg_client.post("/api/complaints/check-duplicates", json=payload)
+    assert response.status_code == 200
+    assert len(response.json()["matches"]) <= 5
+    assert response.json()["matches"][0]["complaint_id"] == record["id"]
+    payload["current_complaint_id"] = record["id"]
+    excluded = await pg_client.post("/api/complaints/check-duplicates", json=payload)
+    assert all(
+        match["complaint_id"] != record["id"] for match in excluded.json()["matches"]
+    )
+    after = (await pg_client.get("/api/complaints?page=1&page_size=1")).json()["total"]
+    assert after == before
 
 
 async def test_validation_errors_use_standard_contract(pg_client: AsyncClient) -> None:
@@ -167,3 +203,61 @@ async def test_process_document_does_not_create_ledger_row(
     assert response.status_code == 200
     assert response.json()["source_type"] == "PDF"
     assert after == before
+
+
+async def test_correction_is_nonpersistent_then_explicit_commit_persists(
+    pg_client: AsyncClient, pg_connection: asyncpg.Connection
+) -> None:
+    before = await pg_connection.fetchval("SELECT count(*) FROM complaints")
+    current = {
+        "complaint_source": "Fictional email",
+        "customer_name": "Fictional Hospital",
+        "product_type": "FDF",
+        "product_name": "Amoxicillin Capsules",
+        "product_strength_grade": "500 mg",
+        "batch_lot_number": "AMX240602",
+        "affected_quantity": "12 capsules",
+        "manufacturing_date": None,
+        "expiry_retest_date": None,
+        "originating_site_block": None,
+        "impacted_non_product_materials": None,
+        "complaint_category": "Packaging",
+        "complaint_description": "Dented carton.",
+    }
+    assessment = {
+        "complaint_category": "Packaging",
+        "structured_complaint_description": "Dented carton.",
+        "suggested_severity": "MINOR",
+        "severity_rationale": "Cosmetic fictional report.",
+        "initial_risk_assessment": "Potential impact requires QA review.",
+        "suggested_next_action": "QA should inspect the fictional sample.",
+        "assessment_status": "COMPLETE",
+        "information_gaps": [],
+        "human_review_required": True,
+    }
+    corrected = await pg_client.post(
+        "/api/complaints/correct",
+        json={
+            "current_complaint": current,
+            "instruction": "Correct batch and quantity",
+            "current_quality_assessment": assessment,
+        },
+    )
+    after_correction = await pg_connection.fetchval("SELECT count(*) FROM complaints")
+    assert corrected.status_code == 200
+    assert after_correction == before
+    updated = corrected.json()["updated_complaint"]
+    committed = await pg_client.post(
+        "/api/complaints",
+        json={
+            **updated,
+            "source_type": "TEXT",
+            "suggested_severity": "MINOR",
+            "initial_risk_assessment": assessment["initial_risk_assessment"],
+            "suggested_next_action": assessment["suggested_next_action"],
+        },
+    )
+    assert committed.status_code == 201
+    retrieved = await pg_client.get(f"/api/complaints/{committed.json()['id']}")
+    assert retrieved.json()["batch_lot_number"] == "BMX240602"
+    assert retrieved.json()["affected_quantity"] == "48 capsules"

@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import {
+  applyCorrection,
   commitComplaintDraft,
   processDocumentComplaint,
   processTextComplaint,
@@ -12,10 +13,12 @@ import {
   resetComplaintDraft,
   selectDocument,
   updateCopilotInput,
+  updateCorrectionInstruction,
   updateDraftField,
 } from './complaintSlice'
 import { complaintFormSchema, type ComplaintFormValues } from './schema'
 import type { ComplaintDraft } from './types'
+import { EnhancementPanels } from './EnhancementPanels'
 
 const MAX_UPLOAD_SIZE_MB = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB ?? 10)
 
@@ -51,8 +54,17 @@ export function ComplaintWorkspace() {
     selectedDocument,
     documentStatus,
     documentError,
+    documentErrorRetryable,
     documentWarnings,
     qualityAssessment,
+    correctionInstruction,
+    correctionStatus,
+    correctionError,
+    clarificationQuestion,
+    completenessAssessment,
+    possibleDuplicateMatches,
+    rcaCapaRecommendations,
+    enhancementResultsStale,
   } = complaint
   const {
     register,
@@ -116,6 +128,11 @@ export function ComplaintWorkspace() {
   const processText = () => {
     if (copilotInput.trim() && processingStatus !== 'processing') {
       void dispatch(processTextComplaint(copilotInput))
+    }
+  }
+  const correctDraft = () => {
+    if (correctionInstruction.trim() && correctionStatus !== 'processing') {
+      void dispatch(applyCorrection(correctionInstruction))
     }
   }
   const chooseDocument = (file: File | undefined) => {
@@ -333,6 +350,12 @@ export function ComplaintWorkspace() {
             <textarea className={inputClass} {...bind('suggestedNextAction')} />
           </label>
         </Section>
+        <EnhancementPanels
+          completeness={completenessAssessment}
+          duplicates={possibleDuplicateMatches}
+          rcaCapa={rcaCapaRecommendations}
+          stale={enhancementResultsStale}
+        />
         {error && (
           <p
             role="alert"
@@ -436,7 +459,7 @@ export function ComplaintWorkspace() {
                 {documentSelectionError ?? documentError} Your draft and
                 selected document were preserved.
               </p>
-              {documentError && (
+              {documentError && documentErrorRetryable && (
                 <button
                   type="button"
                   onClick={processDocument}
@@ -460,10 +483,18 @@ export function ComplaintWorkspace() {
           <button
             type="button"
             onClick={processDocument}
-            disabled={!documentFile || documentStatus === 'uploading'}
+            disabled={
+              !documentFile ||
+              documentStatus === 'uploading' ||
+              Boolean(documentError && !documentErrorRetryable)
+            }
             className="w-full rounded-lg border border-teal-400 px-4 py-2 text-sm font-semibold text-teal-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {documentStatus === 'uploading' ? 'Processing PDF…' : 'Process PDF'}
+            {documentStatus === 'uploading'
+              ? 'Processing PDF…'
+              : documentError && !documentErrorRetryable
+                ? 'Choose another PDF'
+                : 'Process PDF'}
           </button>
         </section>
         {conversation.length > 0 && (
@@ -489,16 +520,56 @@ export function ComplaintWorkspace() {
           </ol>
         )}
         <label className="block text-sm font-medium text-slate-200">
-          Complaint text or email
+          {qualityAssessment
+            ? 'Correction instruction'
+            : 'Complaint text or email'}
           <textarea
             rows={7}
-            value={copilotInput}
+            value={qualityAssessment ? correctionInstruction : copilotInput}
             onChange={(event) =>
-              dispatch(updateCopilotInput(event.target.value))
+              dispatch(
+                qualityAssessment
+                  ? updateCorrectionInstruction(event.target.value)
+                  : updateCopilotInput(event.target.value),
+              )
             }
             className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-800 p-3 text-sm text-white outline-none focus:border-teal-400"
           />
         </label>
+        <p className="text-xs text-slate-400">
+          {qualityAssessment
+            ? 'Correction mode: only requested source fields change; commit remains manual.'
+            : 'Intake mode: process evidence into a reviewable draft.'}
+        </p>
+        {correctionStatus === 'processing' && (
+          <div role="status" className="rounded-xl bg-white/10 p-4 text-sm">
+            Interpreting, validating, and refreshing quality context
+          </div>
+        )}
+        {clarificationQuestion &&
+          correctionStatus === 'clarification_required' && (
+            <p
+              role="status"
+              className="rounded-xl bg-amber-400/10 p-3 text-sm text-amber-200"
+            >
+              {clarificationQuestion}
+            </p>
+          )}
+        {correctionError && (
+          <div
+            role="alert"
+            className="rounded-xl bg-red-400/10 p-4 text-sm text-red-200"
+          >
+            <p>{correctionError}. Your draft and instruction were preserved.</p>
+            <button
+              type="button"
+              onClick={correctDraft}
+              className="mt-3 rounded-lg border border-red-300 px-3 py-1 font-semibold"
+            >
+              Retry correction
+            </button>
+          </div>
+        )}
         {processingStatus === 'processing' && (
           <div
             role="status"
@@ -541,13 +612,22 @@ export function ComplaintWorkspace() {
         )}
         <button
           type="button"
-          onClick={processText}
-          disabled={!copilotInput.trim() || processingStatus === 'processing'}
+          onClick={qualityAssessment ? correctDraft : processText}
+          disabled={
+            qualityAssessment
+              ? !correctionInstruction.trim() ||
+                correctionStatus === 'processing'
+              : !copilotInput.trim() || processingStatus === 'processing'
+          }
           className="w-full rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {processingStatus === 'processing'
-            ? 'Processing…'
-            : 'Process Complaint'}
+          {qualityAssessment
+            ? correctionStatus === 'processing'
+              ? 'Applying correction…'
+              : 'Apply Correction'
+            : processingStatus === 'processing'
+              ? 'Processing…'
+              : 'Process Complaint'}
         </button>
         {savedRecord ? (
           <div className="rounded-xl bg-white/10 p-4">

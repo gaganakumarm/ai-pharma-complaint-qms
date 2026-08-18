@@ -66,6 +66,9 @@ export interface ProcessTextResponse {
   input_length: number
   extracted_complaint: ExtractedComplaint
   quality_assessment: ComplaintQualityAssessment
+  completeness_assessment?: CompletenessAssessment
+  possible_duplicate_matches?: DuplicateMatch[]
+  rca_capa_recommendations?: RcaCapaRecommendations
   warnings: string[]
   assistant_message: string
   status: 'PROCESSED'
@@ -90,6 +93,9 @@ export interface ProcessDocumentResponse {
   document: DocumentMetadata
   extracted_complaint: ExtractedComplaint
   quality_assessment: ComplaintQualityAssessment
+  completeness_assessment?: CompletenessAssessment
+  possible_duplicate_matches?: DuplicateMatch[]
+  rca_capa_recommendations?: RcaCapaRecommendations
   warnings: string[]
   assistant_message: string
   status: 'PROCESSED'
@@ -109,8 +115,77 @@ export interface ComplaintQualityAssessment {
   disclaimer: string
 }
 
+export interface CompletenessAssessment {
+  status: 'COMPLETE' | 'NEEDS_INFORMATION'
+  required_fields_present: number
+  total_required_fields: number
+  completeness_percentage: number
+  missing_required_fields: string[]
+  missing_recommended_fields: string[]
+  guidance: string
+}
+
+export interface DuplicateMatch {
+  complaint_id: string
+  complaint_number: string
+  product_name: string
+  batch_lot_number: string
+  complaint_category: string
+  status: 'COMMITTED'
+  created_at: string
+  similarity_score: number
+  match_level: 'POSSIBLE_MATCH' | 'STRONG_MATCH'
+  match_reasons: string[]
+}
+
+export interface RcaCapaRecommendations {
+  potential_root_causes: Array<{
+    statement: string
+    rationale: string
+    evidence_required: string
+  }>
+  investigation_areas: string[]
+  corrective_actions: Array<{
+    action: string
+    purpose: string
+    verification: string
+  }>
+  preventive_actions: Array<{
+    action: string
+    purpose: string
+    effectiveness_check: string
+  }>
+  assumptions_or_limitations: string[]
+  human_review_required: true
+  disclaimer: string
+}
+
 export interface ConversationMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+}
+
+export type CorrectionField = keyof ExtractedComplaint | 'complaint_category'
+
+export interface CorrectableComplaint extends ExtractedComplaint {
+  complaint_category: string | null
+}
+
+export interface ComplaintCorrectionResponse {
+  patch: {
+    updates: { field: CorrectionField; value: string | null }[]
+    clarification_required: boolean
+    clarification_question: string | null
+  }
+  updated_complaint: CorrectableComplaint
+  changed_fields: CorrectionField[]
+  warnings: string[]
+  quality_assessment: ComplaintQualityAssessment
+  completeness_assessment?: CompletenessAssessment
+  possible_duplicate_matches?: DuplicateMatch[]
+  rca_capa_recommendations?: RcaCapaRecommendations
+  assistant_message: string
+  status: 'APPLIED' | 'CLARIFICATION_REQUIRED' | 'NO_CHANGES'
+  model: string
 }

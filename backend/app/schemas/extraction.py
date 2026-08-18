@@ -5,6 +5,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain import ProductType, SourceType
 from app.schemas.assessment import ComplaintQualityAssessment
+from app.schemas.enhancements import (
+    CompletenessAssessment,
+    DuplicateMatch,
+    RcaCapaRecommendations,
+)
 
 
 class ExtractedComplaint(BaseModel):
@@ -48,6 +53,9 @@ class ProcessTextResponse(BaseModel):
     input_length: int
     extracted_complaint: ExtractedComplaint
     quality_assessment: ComplaintQualityAssessment
+    completeness_assessment: CompletenessAssessment
+    possible_duplicate_matches: list[DuplicateMatch] = Field(max_length=5)
+    rca_capa_recommendations: RcaCapaRecommendations
     warnings: list[str]
     assistant_message: str
     status: ProcessingStatus = ProcessingStatus.PROCESSED
@@ -66,6 +74,9 @@ class ProcessDocumentResponse(BaseModel):
     document: DocumentMetadata
     extracted_complaint: ExtractedComplaint
     quality_assessment: ComplaintQualityAssessment
+    completeness_assessment: CompletenessAssessment
+    possible_duplicate_matches: list[DuplicateMatch] = Field(max_length=5)
+    rca_capa_recommendations: RcaCapaRecommendations
     warnings: list[str]
     assistant_message: str
     status: ProcessingStatus = ProcessingStatus.PROCESSED

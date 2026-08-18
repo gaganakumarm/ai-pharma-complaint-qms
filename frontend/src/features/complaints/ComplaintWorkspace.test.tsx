@@ -4,21 +4,31 @@ import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppStore } from '../../app/store'
+import { ApiRequestError } from '../../shared/api/client'
 import {
   commitComplaint,
+  correctComplaint,
   processComplaintDocument,
   processComplaintText,
 } from './api'
-import { commitComplaintDraft, processTextComplaint } from './complaintSlice'
+import {
+  applyCorrection,
+  commitComplaintDraft,
+  processTextComplaint,
+  updateCorrectionInstruction,
+  updateDraftField,
+} from './complaintSlice'
 import { ComplaintWorkspace } from './ComplaintWorkspace'
 import type { ComplaintRecord } from './types'
 
 vi.mock('./api', () => ({
   commitComplaint: vi.fn(),
+  correctComplaint: vi.fn(),
   processComplaintDocument: vi.fn(),
   processComplaintText: vi.fn(),
 }))
 const mockedCommit = vi.mocked(commitComplaint)
+const mockedCorrect = vi.mocked(correctComplaint)
 const mockedProcess = vi.mocked(processComplaintText)
 const mockedProcessDocument = vi.mocked(processComplaintDocument)
 
@@ -86,8 +96,303 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
 describe('ComplaintWorkspace', () => {
   beforeEach(() => {
     mockedCommit.mockReset()
+    mockedCorrect.mockReset()
     mockedProcess.mockReset()
     mockedProcessDocument.mockReset()
+  })
+
+  it('enters correction mode, submits once, updates two fields, and requires commit', async () => {
+    const store = renderWorkspace()
+    act(() => {
+      store.dispatch(
+        updateDraftField({ field: 'customerName', value: 'Manual Customer' }),
+      )
+      store.dispatch(
+        updateDraftField({ field: 'batchLotNumber', value: 'OLD-1' }),
+      )
+      store.dispatch(
+        updateDraftField({ field: 'affectedQuantity', value: '12 capsules' }),
+      )
+      store.dispatch(
+        processTextComplaint.fulfilled(
+          {
+            source_type: 'TEXT',
+            input_length: 10,
+            status: 'PROCESSED',
+            model: 'fake-model',
+            quality_assessment: qualityAssessment,
+            warnings: [],
+            assistant_message: 'Draft ready.',
+            extracted_complaint: {
+              complaint_source: 'Email',
+              customer_name: null,
+              product_type: 'FDF',
+              product_name: 'Amoxicillin',
+              product_strength_grade: '500 mg',
+              batch_lot_number: null,
+              affected_quantity: null,
+              manufacturing_date: null,
+              expiry_retest_date: null,
+              originating_site_block: null,
+              impacted_non_product_materials: null,
+              complaint_description: 'Dented carton.',
+            },
+          },
+          'processed',
+          'input',
+        ),
+      )
+    })
+    mockedCorrect.mockResolvedValue({
+      patch: {
+        updates: [
+          { field: 'batch_lot_number', value: 'BMX240602' },
+          { field: 'affected_quantity', value: '48 capsules' },
+        ],
+        clarification_required: false,
+        clarification_question: null,
+      },
+      updated_complaint: {
+        complaint_source: 'Email',
+        customer_name: 'Manual Customer',
+        product_type: 'FDF',
+        product_name: 'Amoxicillin',
+        product_strength_grade: '500 mg',
+        batch_lot_number: 'BMX240602',
+        affected_quantity: '48 capsules',
+        manufacturing_date: null,
+        expiry_retest_date: null,
+        originating_site_block: null,
+        impacted_non_product_materials: null,
+        complaint_category: 'Product quality defect',
+        complaint_description: 'Validated structured complaint.',
+      },
+      changed_fields: ['batch_lot_number', 'affected_quantity'],
+      warnings: [],
+      quality_assessment: {
+        ...qualityAssessment,
+        severity_rationale: 'Refreshed rationale.',
+      },
+      assistant_message: 'Updated Batch Lot Number and Affected Quantity.',
+      status: 'APPLIED',
+      model: 'fake-model',
+    })
+    const user = userEvent.setup()
+    expect(screen.getByLabelText('Correction instruction')).toBeInTheDocument()
+    await user.type(
+      screen.getByLabelText('Correction instruction'),
+      'Correct batch and quantity',
+    )
+    await user.dblClick(
+      screen.getByRole('button', { name: 'Apply Correction' }),
+    )
+    expect(await screen.findByDisplayValue('BMX240602')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Affected Quantity/)).toHaveValue(
+      '48 capsules',
+    )
+    expect(screen.getByLabelText(/Customer Name/)).toHaveValue(
+      'Manual Customer',
+    )
+    expect(screen.getByText('Refreshed rationale.')).toBeInTheDocument()
+    expect(mockedCorrect).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('COMMITTED')).not.toBeInTheDocument()
+    expect(screen.getByText('Correct batch and quantity')).toBeInTheDocument()
+  })
+
+  it('dispatches an API correction after FDF correction, commit, and new PDF intake', async () => {
+    const documentResponse = (productType: 'FDF' | 'API') => ({
+      source_type: 'PDF' as const,
+      document: {
+        filename: `${productType}.pdf`,
+        content_type: 'application/pdf',
+        page_count: 1,
+        character_count: 100,
+      },
+      status: 'PROCESSED' as const,
+      model: 'fake',
+      quality_assessment: qualityAssessment,
+      warnings: [],
+      assistant_message: `${productType} ready.`,
+      extracted_complaint: {
+        complaint_source: 'Fictional PDF',
+        customer_name: 'Fictional Company',
+        product_type: productType,
+        product_name:
+          productType === 'API' ? 'Metformin API' : 'Amoxicillin Capsules',
+        product_strength_grade: productType === 'API' ? 'IP/BP' : '500 mg',
+        batch_lot_number: productType === 'API' ? 'MET-API-77A' : 'AMX240602',
+        affected_quantity: productType === 'API' ? '25 kg' : '12 capsules',
+        manufacturing_date: null,
+        expiry_retest_date: null,
+        originating_site_block: null,
+        impacted_non_product_materials: null,
+        complaint_description: 'Fictional issue.',
+      },
+    })
+    mockedProcessDocument
+      .mockResolvedValueOnce(documentResponse('FDF'))
+      .mockResolvedValueOnce(documentResponse('API'))
+    mockedCorrect
+      .mockResolvedValueOnce({
+        patch: {
+          updates: [{ field: 'batch_lot_number', value: 'BMX240602' }],
+          clarification_required: false,
+          clarification_question: null,
+        },
+        updated_complaint: {
+          ...documentResponse('FDF').extracted_complaint,
+          complaint_category: qualityAssessment.complaint_category,
+          batch_lot_number: 'BMX240602',
+        },
+        changed_fields: ['batch_lot_number'],
+        warnings: [],
+        quality_assessment: qualityAssessment,
+        assistant_message: 'FDF corrected.',
+        status: 'APPLIED',
+        model: 'fake',
+      })
+      .mockResolvedValueOnce({
+        patch: {
+          updates: [
+            { field: 'batch_lot_number', value: 'CHG-260712A' },
+            { field: 'affected_quantity', value: '50 kg in 2 HDPE drums' },
+          ],
+          clarification_required: false,
+          clarification_question: null,
+        },
+        updated_complaint: {
+          ...documentResponse('API').extracted_complaint,
+          complaint_category: qualityAssessment.complaint_category,
+          batch_lot_number: 'CHG-260712A',
+          affected_quantity: '50 kg in 2 HDPE drums',
+        },
+        changed_fields: ['batch_lot_number', 'affected_quantity'],
+        warnings: [],
+        quality_assessment: qualityAssessment,
+        assistant_message: 'API corrected.',
+        status: 'APPLIED',
+        model: 'fake',
+      })
+    mockedCommit.mockResolvedValue(savedRecord)
+    const user = userEvent.setup()
+    renderWorkspace()
+    const fileInput = screen.getByLabelText('Choose a PDF or drag it here')
+    await user.upload(
+      fileInput,
+      new File(['fdf'], 'FDF.pdf', { type: 'application/pdf' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Process PDF' }))
+    await user.type(
+      await screen.findByLabelText('Correction instruction'),
+      'Correct FDF batch',
+    )
+    await user.click(screen.getByRole('button', { name: 'Apply Correction' }))
+    await screen.findByDisplayValue('BMX240602')
+    await user.click(
+      screen.getByRole('button', { name: 'Commit to QMS Ledger' }),
+    )
+    await user.upload(
+      fileInput,
+      new File(['api'], 'API.pdf', { type: 'application/pdf' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Process PDF' }))
+    await user.type(
+      await screen.findByLabelText('Correction instruction'),
+      'Correct API batch and quantity',
+    )
+    await user.click(screen.getByRole('button', { name: 'Apply Correction' }))
+    await screen.findByDisplayValue('CHG-260712A')
+    expect(mockedCorrect).toHaveBeenCalledTimes(2)
+    expect(mockedCorrect.mock.calls[1][0].batchLotNumber).toBe('MET-API-77A')
+    expect(screen.getByLabelText(/Customer Name/)).toHaveValue(
+      'Fictional Company',
+    )
+  })
+
+  it('preserves correction draft for clarification, no-op, failure, and retry', async () => {
+    const store = renderWorkspace()
+    act(() => {
+      store.dispatch(
+        updateDraftField({ field: 'batchLotNumber', value: 'LOT-1' }),
+      )
+      store.dispatch(
+        processTextComplaint.fulfilled(
+          {
+            source_type: 'TEXT',
+            input_length: 1,
+            status: 'PROCESSED',
+            model: 'fake',
+            quality_assessment: qualityAssessment,
+            warnings: [],
+            assistant_message: 'Ready.',
+            extracted_complaint: {
+              complaint_source: null,
+              customer_name: null,
+              product_type: 'FDF',
+              product_name: null,
+              product_strength_grade: null,
+              batch_lot_number: null,
+              affected_quantity: null,
+              manufacturing_date: null,
+              expiry_retest_date: null,
+              originating_site_block: null,
+              impacted_non_product_materials: null,
+              complaint_description: null,
+            },
+          },
+          'ready',
+          'x',
+        ),
+      )
+      store.dispatch(updateCorrectionInstruction('The number is wrong'))
+      store.dispatch(
+        applyCorrection.rejected(
+          new Error('Provider unavailable'),
+          'failed',
+          'The number is wrong',
+          'Provider unavailable',
+        ),
+      )
+    })
+    expect(screen.getByLabelText('Correction instruction')).toHaveValue(
+      'The number is wrong',
+    )
+    expect(screen.getByLabelText(/Batch\/Lot Number/)).toHaveValue('LOT-1')
+    mockedCorrect.mockResolvedValue({
+      patch: {
+        updates: [],
+        clarification_required: true,
+        clarification_question: 'Which number should change?',
+      },
+      updated_complaint: {
+        complaint_source: null,
+        customer_name: null,
+        product_type: 'FDF',
+        product_name: null,
+        product_strength_grade: null,
+        batch_lot_number: 'LOT-1',
+        affected_quantity: null,
+        manufacturing_date: null,
+        expiry_retest_date: null,
+        originating_site_block: null,
+        impacted_non_product_materials: null,
+        complaint_category: 'Product quality defect',
+        complaint_description: 'Validated structured complaint.',
+      },
+      changed_fields: [],
+      warnings: [],
+      quality_assessment: qualityAssessment,
+      assistant_message: 'Which number should change?',
+      status: 'CLARIFICATION_REQUIRED',
+      model: 'fake',
+    })
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Retry correction' }))
+    expect(
+      await screen.findAllByText('Which number should change?'),
+    ).not.toHaveLength(0)
+    expect(screen.getByLabelText(/Batch\/Lot Number/)).toHaveValue('LOT-1')
   })
 
   it('renders the complete form and accessible validation', async () => {
@@ -205,7 +510,7 @@ describe('ComplaintWorkspace', () => {
     expect(screen.getByLabelText('Initial Risk Assessment')).toHaveValue(
       'Edited by QA',
     )
-    expect(screen.getAllByText('Apollo email complaint')).toHaveLength(2)
+    expect(screen.getAllByText('Apollo email complaint')).toHaveLength(1)
     expect(screen.getByText('Review the populated form.')).toBeInTheDocument()
   })
 
@@ -464,6 +769,36 @@ describe('ComplaintWorkspace', () => {
       await screen.findByText(/PDF service unavailable/),
     ).toBeInTheDocument()
     expect(screen.getByText('retry.pdf')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Retry PDF' }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not offer retry for a textless PDF validation failure', async () => {
+    mockedProcessDocument.mockRejectedValueOnce(
+      new ApiRequestError(
+        'No readable text was found. Upload a text-based PDF or paste the complaint text.',
+        'NO_EXTRACTABLE_TEXT',
+        422,
+        false,
+      ),
+    )
+    const user = userEvent.setup()
+    renderWorkspace()
+    await user.upload(
+      screen.getByLabelText('Choose a PDF or drag it here'),
+      new File(['%PDF-test'], 'textless.pdf', { type: 'application/pdf' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Process PDF' }))
+    expect(
+      await screen.findByText(/No readable text was found/),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Retry PDF' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Choose another PDF' }),
+    ).toBeDisabled()
   })
 
   it.each(['MINOR', 'CRITICAL'] as const)(

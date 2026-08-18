@@ -4,7 +4,20 @@ import type {
   ComplaintRecord,
   ProcessTextResponse,
   ProcessDocumentResponse,
+  ComplaintQualityAssessment,
+  ComplaintCorrectionResponse,
+  CompletenessAssessment,
+  DuplicateMatch,
+  RcaCapaRecommendations,
 } from './types'
+
+const configuredAiTimeout = Number(
+  import.meta.env.VITE_AI_REQUEST_TIMEOUT_MS ?? 120_000,
+)
+const AI_REQUEST_TIMEOUT_MS =
+  Number.isFinite(configuredAiTimeout) && configuredAiTimeout > 0
+    ? configuredAiTimeout
+    : 120_000
 
 export interface PaginatedComplaints {
   items: Array<
@@ -24,6 +37,45 @@ export interface PaginatedComplaints {
   page_size: number
   total: number
   total_pages: number
+}
+
+export async function correctComplaint(
+  draft: ComplaintDraft,
+  assessment: ComplaintQualityAssessment,
+  instruction: string,
+  completeness: CompletenessAssessment | null = null,
+  duplicates: DuplicateMatch[] = [],
+  rcaCapa: RcaCapaRecommendations | null = null,
+) {
+  const response = await apiClient.post<ComplaintCorrectionResponse>(
+    '/api/complaints/correct',
+    {
+      current_complaint: {
+        complaint_source: optional(draft.complaintSource),
+        customer_name: optional(draft.customerName),
+        product_type: draft.productType,
+        product_name: optional(draft.productName),
+        product_strength_grade: optional(draft.productStrengthGrade),
+        batch_lot_number: optional(draft.batchLotNumber),
+        affected_quantity: optional(draft.affectedQuantity),
+        manufacturing_date: optional(draft.manufacturingDate),
+        expiry_retest_date: optional(draft.expiryRetestDate),
+        originating_site_block: optional(draft.originatingSiteBlock),
+        impacted_non_product_materials: optional(
+          draft.impactedNonProductMaterials,
+        ),
+        complaint_category: optional(draft.complaintCategory),
+        complaint_description: optional(draft.complaintDescription),
+      },
+      instruction,
+      current_quality_assessment: assessment,
+      current_completeness_assessment: completeness,
+      current_possible_duplicate_matches: duplicates,
+      current_rca_capa_recommendations: rcaCapa,
+    },
+    { timeout: AI_REQUEST_TIMEOUT_MS },
+  )
+  return response.data
 }
 
 const optional = (value: string) => value.trim() || null
@@ -72,6 +124,7 @@ export async function processComplaintText(text: string) {
   const response = await apiClient.post<ProcessTextResponse>(
     '/api/complaints/process-text',
     { text },
+    { timeout: AI_REQUEST_TIMEOUT_MS },
   )
   return response.data
 }
@@ -82,6 +135,7 @@ export async function processComplaintDocument(file: File) {
   const response = await apiClient.post<ProcessDocumentResponse>(
     '/api/complaints/process-document',
     formData,
+    { timeout: AI_REQUEST_TIMEOUT_MS },
   )
   return response.data
 }
