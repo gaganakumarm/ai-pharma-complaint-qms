@@ -41,7 +41,6 @@ docs/                  Architecture, SRS, API, testing, submission
 sample-data/           Fictional FDF, API, and textless PDFs
 ```
 
-See [architecture.md](docs/architecture.md) and [requirements traceability](docs/requirements-traceability.md).
 
 ## Prerequisites
 
@@ -174,12 +173,12 @@ npm test
 npm run build
 ```
 
-## Thunder Client, screenshots, and demo
+## API documentation, screenshots, and demo
 
-Import collections under `docs/thunder-client/`; select PDF files manually for multipart requests. They contain fictional data and no credentials.
+Use the interactive Swagger UI at `http://localhost:8000/docs`; select PDF files
+manually for multipart requests and use only fictional data.
 
 - [Screenshot capture checklist](docs/screenshots/README.md)
-- [Submission summary](docs/submission.md)
 - Demo video: **add a reviewer-accessible link before submission**
 
 No binary screenshot placeholders are committed.

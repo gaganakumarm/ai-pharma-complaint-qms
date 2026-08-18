@@ -1,160 +1,160 @@
 # System Architecture
 
-Sprint 5 uses a separate compiled correction LangGraph: normalize, extract strict
-patch, validate, deterministic merge, recalculate warnings, conditionally reassess,
-validate assessment, and prepare response. Routes remain HTTP-only, the provider
-interprets language without merging, and repositories remain persistence-only. The
-in-memory response is atomic and the correction endpoint never writes the ledger.
-
 ## 1. Overview
 
-The AI-Powered Pharmaceutical Customer Complaint Management System uses a modular full-stack architecture. React and Redux manage the user workspace and complaint draft. FastAPI exposes validated use cases. Application services coordinate AI and persistence operations. LangGraph orchestrates structured complaint processing through Groq. PostgreSQL stores only explicitly committed complaints.
+The AI-Powered Pharmaceutical Customer Complaint Management System is a modular
+full-stack application. React and Redux manage the complaint workspace, FastAPI
+exposes validated use cases, LangGraph coordinates structured AI processing through
+Groq, and PostgreSQL stores only explicitly committed complaints.
 
-The architecture applies SOLID principles pragmatically: components are separated when they have different reasons to change or require independent testing, without creating unnecessary interfaces for trivial functions.
+The architecture applies practical SOLID principles by separating components with
+different responsibilities while avoiding unnecessary abstraction.
 
-## 2. Architectural goals
-
-- Reproduce the complete assignment workflow
-- Keep UI, HTTP, business rules, persistence, AI, and documents separate
-- Prevent unvalidated LLM output from reaching the form or database
-- Preserve drafts during recoverable failures
-- Make external providers replaceable in tests
-- Support API and FDF complaints through one processing pipeline
-- Keep QA personnel responsible for final quality decisions
-
-## 3. System architecture
+## 2. Main components
 
 ```mermaid
 flowchart TD
-    U["QA User"] --> FE["React UI"]
-    FE --> RX["Redux Store"]
-    RX --> API["FastAPI API"]
-    API --> APP["Application Services"]
-    APP --> GRAPH["LangGraph Workflow"]
-    GRAPH --> GROQ["Groq Provider"]
-    APP --> PDF["PDF Text Extractor"]
-    APP --> DB[("PostgreSQL")]
+    UI["React UI"] --> State["Redux Toolkit"]
+    State --> API["FastAPI routes"]
+    API --> Services["Application services"]
+
+    Services --> Graphs["LangGraph workflows"]
+    Graphs --> Groq["Groq provider"]
+
+    Services --> Documents["PDF text extractor"]
+    Services --> Rules["Completeness and duplicate logic"]
+    Services --> Repository["Complaint repository"]
+    Repository --> ORM["Async SQLAlchemy"]
+    ORM --> DB[("PostgreSQL")]
 ```
 
-### Boundaries
+### Architectural boundaries
 
 - React never calls Groq or PostgreSQL directly.
-- Routes handle transport concerns, not business decisions.
-- Services coordinate use cases and own database transaction outcomes.
-- Repositories perform queries but do not call AI services.
-- LangGraph coordinates AI steps but does not create HTTP responses.
-- All AI results pass through Pydantic validation.
-- Redux is the frontend source of truth for the working draft.
+- Redux is the source of truth for the editable complaint draft.
+- Routes handle HTTP transport and delegate use cases to services.
+- Services coordinate workflows and own transaction outcomes.
+- Repositories perform bounded persistence queries and writes.
+- LangGraph coordinates AI and deterministic processing stages.
+- Pydantic schemas remain the final authority for AI output validation.
+- AI processing never persists a complaint automatically.
 
-## 4. Frontend architecture
+## 3. Frontend
 
-### Presentation
+The React frontend provides complaint intake, an editable complaint form, quality and
+risk results, conversational corrections, completeness, duplicate matches, advisory
+RCA/CAPA recommendations, and explicit commit controls.
 
-The complaint workspace contains:
+Redux Toolkit stores the draft, workflow state, warnings, assessments, correction
+results, and committed record. React Hook Form manages accessible form interaction,
+Zod validates client input, and the shared Axios client communicates with FastAPI.
+No credentials are included in the frontend build.
 
-- Origin and customer details
-- Product and batch identification
-- Facility and material impact
-- Defect analysis
-- AI Copilot risk assessment
-- Copilot conversation and intake controls
+## 4. Backend layers
 
-Components render state and dispatch typed actions. They do not embed backend or AI logic.
+| Layer                | Responsibility                                                     |
+| -------------------- | ------------------------------------------------------------------ |
+| API routes           | HTTP parsing, dependency injection, status codes, response schemas |
+| Application services | Use-case coordination and transaction ownership                    |
+| Domain rules         | Completeness, duplicate scoring, validation, correction merging    |
+| Repositories         | Async SQLAlchemy persistence and bounded queries                   |
+| AI layer             | Groq adapter, prompts, provider contract, LangGraph nodes          |
+| Document handling    | Bounded PDF upload reading and selectable-text extraction          |
+| Core                 | Environment settings, error mapping, CORS, application lifecycle   |
 
-### State management
+The persistence path is:
 
-Redux Toolkit stores:
-
-- Complaint form draft
-- Workflow status
-- Conversation messages
-- Processing stages and errors
-- Extraction warnings
-- Quality assessment
-- Selected bonus results
-- Commit response and complaint number
-
-Async thunks call typed API modules. React Hook Form manages accessible input interaction while synchronizing validated values with Redux; Zod provides client validation.
-
-### API integration
-
-The shared Axios client owns base URL and common response handling. Feature API modules define complaint operations. Secrets are never included in the frontend build.
-
-## 5. Backend architecture
-
-| Layer | Responsibility |
-|---|---|
-| API routes | HTTP parsing, dependencies, status codes, response schemas |
-| Application services | Use-case coordination and transaction decisions |
-| Domain logic | Deterministic validation, completeness, scoring, patch merge |
-| Repositories | Async SQLAlchemy persistence and queries |
-| AI infrastructure | Groq adapter, prompts, LangGraph state/nodes |
-| Document infrastructure | PDF validation and selectable-text extraction |
-| Core | Settings, error mapping, logging, lifecycle |
-
-Dependency direction points inward: application behaviour depends on provider and repository contracts, while concrete Groq, PyMuPDF, and SQLAlchemy code remains at infrastructure boundaries.
-
-## 6. End-to-end data flow
-
-```mermaid
-flowchart TD
-    A{"Complaint input"} -->|Text or email| B["Normalize text"]
-    A -->|PDF| C["Validate and extract text"]
-    B --> D["LangGraph processing"]
-    C --> D
-    D --> E["Pydantic validation"]
-    E --> F["Populate Redux form"]
-    F --> G["QA review or correction"]
-    G --> H["Server validation"]
-    H --> I["Commit transaction"]
-    I --> J[("PostgreSQL ledger")]
+```text
+Application Service
+→ Complaint Repository
+→ Async SQLAlchemy
+→ PostgreSQL
 ```
 
-### Manual flow
-
-The user may fill the form without AI. Redux holds the draft, FastAPI validates the commit request, the complaint service assigns `COMMITTED`, and the repository writes it in one PostgreSQL transaction.
-
-### Text flow
-
-The user pastes a complaint. FastAPI validates the request, LangGraph normalizes and extracts fields through Groq, Pydantic validates the result, and Redux populates only supported values. The draft is not saved automatically.
-
-### PDF flow
-
-The backend validates the file and uses basic text extraction. Extracted text enters the same graph used for pasted text. A scanned PDF without readable text returns a clear error; production OCR is not required.
-
-### Correction flow
-
-The current draft and user instruction are processed into an allowlisted partial patch. The backend validates and merges only specified changes, then recalculates affected checks.
-
-## 7. LangGraph workflow
+## 5. Complaint-processing workflow
 
 ```mermaid
 flowchart TD
     N["Normalize input"] --> X["Extract complaint fields"]
     X --> V["Validate extraction"]
-    V --> R["Assess complaint quality and risk"]
-    R --> A["Validate quality assessment"]
-    A --> C["Assess deterministic completeness"]
-    C --> G["Generate advisory RCA/CAPA"]
-    G --> S["Validate RCA/CAPA safety schema"]
+    V --> Q["Assess quality and risk"]
+    Q --> A["Validate assessment"]
+    A --> C["Calculate completeness"]
+    C --> R["Generate advisory RCA/CAPA"]
+    R --> S["Validate RCA/CAPA safety"]
     S --> P["Prepare response"]
 ```
 
-Conversational corrections use a separate compiled graph that normalizes the
-instruction, extracts and validates an allowlisted patch, applies it atomically, and
-conditionally reassesses quality, completeness, and advisory RCA/CAPA. Duplicate
-detection is a bounded database-backed service invoked around graph results rather
-than an AI graph node.
+A processing request may perform separate structured Groq calls for complaint
+extraction, quality/risk assessment, and RCA/CAPA generation. LangGraph coordinates
+these calls as one application workflow.
 
-### Graph state
+Every AI result is parsed and validated against strict Pydantic contracts. Trusted
+human-review flags and disclaimers are enforced locally. Outputs containing prohibited
+final regulatory decisions are rejected.
 
-The typed state carries raw and normalized input, extracted complaint fields, warnings, assessment outputs, bonus results, assistant message, and controlled errors. Nodes remain individually testable.
+## 6. Input paths
 
-### Provider strategy
+### Text and email-style input
 
-The production provider uses the Groq SDK with an environment-configured model. Automated tests inject a deterministic fake provider. Provider errors are mapped into stable application errors; malformed output receives at most one controlled schema retry.
+The user pastes complaint text. The backend validates its size, normalizes it, runs the
+LangGraph workflow, and returns a validated draft. Processing does not create a ledger
+record.
 
-## 8. Request sequence
+### PDF input
+
+`app/services/documents.py` owns bounded upload reading and document-processing
+coordination, while `PdfTextExtractor` isolates PyMuPDF operations. “Document
+infrastructure” describes its responsibility, not its filesystem package.
+
+Only selectable PDF text is supported. A textless or scanned PDF produces a controlled
+error and preserves the user draft; production OCR is outside scope.
+
+### Manual input
+
+The user can complete or edit the form without AI. A complaint enters PostgreSQL only
+after the user explicitly submits the reviewed commit request.
+
+## 7. Conversational corrections
+
+Sprint 5 uses a separate compiled correction LangGraph:
+
+```text
+Normalize instruction
+→ Extract allowlisted patch
+→ Validate patch
+→ Merge atomically
+→ Recalculate warnings
+→ Reassess when relevant
+→ Validate assessment
+→ Recalculate RCA/CAPA when relevant
+→ Validate RCA/CAPA
+→ Prepare response
+```
+
+The correction graph traverses the reassessment node for every request. The node
+regenerates the assessment and RCA/CAPA only for relevant field changes; otherwise,
+it deterministically preserves existing validated results.
+
+The provider interprets the correction instruction but never performs the merge.
+Protected fields cannot be changed, unrelated values are preserved, and the correction
+endpoint never writes to the ledger.
+
+## 8. AI provider organization
+
+Groq is the only production provider in the stable source. The model is configured
+through `GROQ_MODEL`, with `openai/gpt-oss-120b` as the default.
+
+The provider protocol and Groq adapter currently share `app/ai/providers.py` while
+remaining logically separated through protocol-based dependency inversion. Automated
+tests inject deterministic providers through the same contract; fake providers are
+never registered as runtime fallbacks.
+
+Provider authentication, rate-limit, timeout, malformed-output, and availability
+errors are translated into controlled application errors. Malformed structured output
+receives at most one controlled retry.
+
+## 9. Explicit commit sequence
 
 ```mermaid
 sequenceDiagram
@@ -162,41 +162,40 @@ sequenceDiagram
     participant UI as React UI
     participant Store as Redux
     participant API as FastAPI
-    participant Graph as LangGraph
-    participant AI as Groq
+    participant Service as Complaint Service
+    participant Repo as Complaint Repository
     participant DB as PostgreSQL
 
-    User->>UI: Paste text or upload PDF
-    UI->>Store: Dispatch processing action
-    Store->>API: Submit complaint input
-    API->>Graph: Invoke typed workflow
-    Graph->>AI: Request structured analysis
-    AI-->>Graph: Structured result
-    Graph-->>API: Validated draft and assessment
-    API-->>Store: Processing response
-    Store-->>UI: Populate complaint form
-    User->>UI: Review or correct fields
-    UI->>Store: Update reviewed draft
-    User->>UI: Commit to QMS Ledger
+    User->>UI: Commit reviewed complaint
+    UI->>Store: Dispatch commit
     Store->>API: POST reviewed complaint
-    API->>DB: Transactional insert
-    DB-->>API: Saved complaint
-    API-->>UI: Complaint number and status
+    API->>Service: Validate and commit
+    Service->>Repo: Add complaint
+    Repo->>DB: Transactional insert
+    DB-->>Repo: Saved record
+    Repo-->>Service: Committed complaint
+    Service-->>API: Complaint result
+    API-->>Store: Complaint number and status
+    Store-->>UI: Display committed result
 ```
 
-## 9. Persistence architecture
+Services own commit and rollback. Repositories flush and query without independently
+committing transactions.
+
+## 10. Persistence
 
 - PostgreSQL is the runtime and integration-test database.
-- SQLAlchemy uses an asynchronous engine and sessions.
+- SQLAlchemy uses an asynchronous engine and request-scoped sessions.
 - Alembic manages schema evolution.
 - UUIDs provide stable internal identifiers.
-- A PostgreSQL sequence provides concurrency-safe human-readable numbers.
-- Services own commit/rollback; repositories flush and query.
-- Draft AI processing does not insert database rows.
+- A PostgreSQL sequence generates concurrency-safe complaint numbers.
+- Duplicate detection uses a bounded, newest-first candidate query.
+- Completeness, duplicate results, and RCA/CAPA recommendations remain advisory.
+- Draft processing and conversational correction do not insert ledger rows.
 
-## 10. Error handling
+## 11. Error handling and safety
 
-Failures use a standard envelope:
+API failures use a consistent envelope:
 
 ```json
 {
@@ -208,18 +207,12 @@ Failures use a standard envelope:
 }
 ```
 
-Validation, PDF, AI authentication, rate limit, timeout, malformed output, not-found, and database errors are mapped without exposing secrets or stack traces. The frontend preserves input and offers retry for recoverable failures.
+Input size limits, PDF bounds, allowlisted correction fields, SQLAlchemy
+parameterization, prompt/data separation, strict schemas, trusted disclaimers, and
+human-review enforcement protect the workflow. Credentials, complaint content, raw
+prompts, and provider responses are not intentionally exposed in API errors.
 
-## 11. Security and configuration
-
-- Secrets reside in backend environment variables.
-- `.env` files are excluded from Git and Docker build contexts.
-- Inputs have type, length, and allowlist validation.
-- SQLAlchemy parameterization prevents raw SQL concatenation.
-- Complaint content is treated as untrusted data rather than model instruction.
-- Logs exclude API keys and avoid unnecessary sensitive complaint content.
-
-## 12. Deployment architecture
+## 12. Deployment
 
 Docker Compose runs:
 
@@ -227,23 +220,14 @@ Docker Compose runs:
 - FastAPI backend on port 8000
 - PostgreSQL on port 5432
 
-PostgreSQL must become healthy before backend startup; the frontend depends on backend health. `/health` reports liveness, while `/ready` verifies PostgreSQL connectivity.
+PostgreSQL must become healthy before the backend starts, and the frontend depends on
+backend health. `/health` reports application liveness; `/ready` verifies PostgreSQL
+connectivity without calling an AI provider.
 
 ## 13. Limitations
 
-This is a modular assignment MVP, not a validated production QMS. Scaling, authentication, electronic signatures, comprehensive audit trails, regulatory reporting, advanced OCR, and autonomous quality decisions are outside scope.
-
-## 14. Sprint 6 boundaries
-
-- `ComplaintCompletenessChecker` is pure deterministic domain logic.
-- `ComplaintRepository` performs a bounded, newest-first candidate query only.
-- `DuplicateScorer` is pure and database-independent; `DuplicateDetectionService`
-  coordinates retrieval and ranking through a protocol dependency.
-- LangGraph runs extraction, quality assessment, deterministic completeness, and the
-  explicit RCA/CAPA provider stage. Correction graphs regenerate only for relevant
-  changed fields and preserve validated results for unrelated corrections.
-- The Groq adapter owns strict structured-output SDK calls and controlled retries.
-- Redux owns completeness, duplicates, RCA/CAPA and stale/reset state; React renders
-  focused accessible panels.
-
-No Sprint 6 enhancement is persisted as an approved regulatory record.
+This project is an assignment-scale QMS workflow, not a validated production QMS. It
+does not provide authentication, electronic signatures, production OCR, mailbox
+integration, semantic duplicate detection, autonomous recall, final batch disposition,
+regulatory approval, or investigation closure. All AI-generated assessments and
+recommendations require review by authorised quality personnel.
