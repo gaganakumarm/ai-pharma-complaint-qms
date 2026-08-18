@@ -288,12 +288,3 @@ Current local verification:
 - [Requirements Traceability](docs/requirements-traceability.md)
 - [Testing and Verification](docs/testing-and-sprints.md)
 
-## Getting help and contributing
-
-Start with the Swagger UI and the linked technical documentation when diagnosing an
-API or workflow issue. When reporting a problem, include the failing command, endpoint,
-HTTP status, sanitized error response, and relevant service logs. Never include API
-keys, `.env` contents, or real complaint data.
-
-Contributions should preserve the explicit human-review boundary, include tests for
-changed behavior, and keep API and architecture documentation aligned with the code.
