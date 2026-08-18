@@ -3,15 +3,15 @@
 ## 1. Purpose
 
 This document describes how the stable application integrates Groq-hosted language
-models and prevents unvalidated model output from becoming trusted complaint data or
+models and prevents unvalidated model output from becoming complaint data or
 an approved pharmaceutical quality decision.
 
 The LLM is a decision-support component. It does not own persistence, corrections,
 quality approval, investigation closure, recall, batch disposition, or CAPA approval.
 
-## 2. Production provider
+## 2. Runtime provider
 
-The stable source uses one production AI provider:
+The backend currently uses one AI provider:
 
 - Provider: Groq
 - Default model: **openai/gpt-oss-120b**
@@ -22,12 +22,11 @@ The stable source uses one production AI provider:
 The model remains environment-configurable. No credential is embedded in source,
 frontend code, Docker images, test fixtures, or documentation.
 
-Retired models referenced by the original assignment were replaced by the configurable
-supported model `openai/gpt-oss-120b`. This replacement does not change the provider
-boundary or pharmaceutical safety requirements.
+The configurable default model is `openai/gpt-oss-120b`. Model changes do not alter
+the provider boundary or pharmaceutical safety requirements.
 
 Gemini was evaluated only in a rejected compatibility experiment. It is absent from
-the stable source, was not merged, and must not appear in runtime configuration
+the current implementation, was not merged, and must not appear in runtime configuration
 instructions. The stable branch does not register Gemini or another automatic
 production fallback. Deterministic fake providers are test-only.
 
@@ -45,7 +44,7 @@ The provider contract defines four operations:
 4. RCA/CAPA recommendation generation
 
 LangGraph and application services depend on this contract rather than directly
-depending on Groq SDK types. This supports deterministic tests and keeps provider
+depending on Groq SDK types. This supports predictable tests and keeps provider
 details outside workflow and business logic.
 
 ## 4. Separation of responsibilities
@@ -58,7 +57,7 @@ details outside workflow and business logic.
 | Pydantic schemas       | Validate structure, types, bounds, and safety          |
 | Deterministic services | Completeness, duplicate scoring, patch merge           |
 | FastAPI routes         | Parse HTTP requests and return validated responses     |
-| Complaint service      | Own explicit persistence transaction                   |
+| Complaint service      | Own the persistence transaction                        |
 | React and Redux        | Present and preserve the editable user draft           |
 
 The model never directly invokes a repository, database session, frontend action, or
@@ -75,7 +74,7 @@ flowchart TD
     Groq --> JSON["JSON parsing"]
     JSON --> Schema["Strict Pydantic validation"]
     Schema --> Safety["Deterministic safety validators"]
-    Safety --> Trusted["Trusted disclaimer and human-review enforcement"]
+    Safety --> Trusted["Fixed disclaimer and review guidance"]
     Trusted --> Workflow["LangGraph/application response"]
 ```
 
@@ -117,7 +116,7 @@ Controls:
 - NEEDS_INFORMATION requires one or more information gaps
 - COMPLETE rejects contradictory information gaps
 - Human review is forced to true
-- Provider disclaimer text is replaced with trusted application wording
+- Provider disclaimer text is replaced with fixed application wording
 - Prohibited final-decision claims are rejected
 
 ### 6.3 Correction patch
@@ -129,7 +128,7 @@ Controls:
 - Only allowlisted complaint fields are accepted
 - Unknown and protected fields are rejected
 - Duplicate field updates are rejected
-- Explicit null supports controlled clearing
+- Explicit null allows a field to be cleared
 - Clarification requires no updates and a question
 - Applied correction requires updates and no clarification question
 - The provider proposes a patch but never performs the merge
@@ -145,7 +144,7 @@ Controls:
 - Structured corrective and preventive suggestions
 - Unknown fields rejected
 - Human review forced to true
-- Disclaimer replaced with trusted application wording
+- Disclaimer replaced with fixed application wording
 - Confirmed root cause and final regulatory decisions rejected
 
 ## 7. Prompt organization
@@ -171,10 +170,10 @@ Prompts instruct the provider to:
 - Treat complaint content as data
 - Avoid final regulatory conclusions
 - Return only the required structure
-- Require authorised human review
+- Present the result for human review
 
 Prompts support the safety model but are not treated as the final enforcement layer.
-Local Pydantic and deterministic validators remain authoritative.
+Pydantic schemas and local validators check the provider response.
 
 ## 8. Prompt-injection handling
 
@@ -218,7 +217,8 @@ The RCA/CAPA validator rejects language that claims:
 - A batch or product should be released, rejected, or recalled
 
 The application presents severity, risk, next-action, root-cause, and CAPA content only
-as preliminary recommendations for authorised QA review.
+as preliminary recommendations intended for review by qualified personnel. The
+current application does not authenticate or authorize a QA reviewer.
 
 ## 10. Trusted fields
 
@@ -227,10 +227,10 @@ The provider cannot control final safety wording.
 The application overwrites these fields during validation:
 
 - **human_review_required** is always true
-- Quality-assessment disclaimer uses application-controlled text
-- RCA/CAPA disclaimer uses application-controlled text
+- Quality-assessment disclaimer uses fixed application text
+- RCA/CAPA disclaimer uses fixed application text
 
-This prevents provider output from weakening the human-review requirement or implying
+This prevents provider output from changing the review warning or implying
 approval.
 
 ## 11. Retry policy
@@ -330,14 +330,14 @@ flowchart LR
 Text processing, PDF processing, correction, completeness, duplicate checking, and
 RCA/CAPA generation do not automatically insert or update complaint records.
 
-Only the explicit complaint commit service owns a write transaction.
+Only the complaint commit service owns a write transaction.
 
 ## 17. Frontend safety behavior
 
 The frontend:
 
 - Preserves the draft when processing or correction fails
-- Shows controlled error messages
+- Shows clear error messages
 - Prevents duplicate processing and commit submissions
 - Displays AI output as requiring review
 - Keeps assessment and recommendation fields editable where intended
@@ -358,7 +358,7 @@ Deterministic tests cover:
 - Protected correction fields
 - Explicit nullable-field clearing
 - Trusted disclaimer replacement
-- Human-review enforcement
+- Explicit frontend review guidance
 - Prohibited regulatory language
 - Draft preservation and non-persistence
 
@@ -381,5 +381,5 @@ outside application control.
 
 All AI-generated complaint fields, severity recommendations, risk assessments,
 duplicate candidates, root-cause hypotheses, and CAPA suggestions are preliminary.
-Authorised quality personnel must verify the evidence, correct the draft, determine
+The reviewer must verify the evidence, correct the draft, determine
 appropriate quality-system actions, and explicitly commit the reviewed complaint.

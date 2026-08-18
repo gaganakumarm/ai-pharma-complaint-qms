@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-The AI-Powered Pharmaceutical Customer Complaint Management System is a modular
-full-stack application. React and Redux manage the complaint workspace, FastAPI
+The application has a React/Redux frontend, a FastAPI backend, and PostgreSQL
+persistence. React and Redux manage the complaint workspace, FastAPI
 exposes validated use cases, LangGraph coordinates structured AI processing through
 Groq, and PostgreSQL stores only explicitly committed complaints.
 
@@ -35,8 +35,8 @@ flowchart TD
 - Routes handle HTTP transport and delegate use cases to services.
 - Services coordinate workflows and own transaction outcomes.
 - Repositories perform bounded persistence queries and writes.
-- LangGraph coordinates AI and deterministic processing stages.
-- Pydantic schemas remain the final authority for AI output validation.
+- LangGraph coordinates AI calls and rule-based processing stages.
+- Pydantic validates AI output before the application uses it.
 - AI processing never persists a complaint automatically.
 
 ## 3. Frontend
@@ -90,7 +90,7 @@ extraction, quality/risk assessment, and RCA/CAPA generation. LangGraph coordina
 these calls as one application workflow.
 
 Every AI result is parsed and validated against strict Pydantic contracts. Trusted
-human-review flags and disclaimers are enforced locally. Outputs containing prohibited
+review flags and disclaimers are set locally. Outputs containing prohibited
 final regulatory decisions are rejected.
 
 ## 6. Input paths
@@ -107,8 +107,8 @@ record.
 coordination, while `PdfTextExtractor` isolates PyMuPDF operations. “Document
 infrastructure” describes its responsibility, not its filesystem package.
 
-Only selectable PDF text is supported. A textless or scanned PDF produces a controlled
-error and preserves the user draft; production OCR is outside scope.
+Only selectable PDF text is supported. A textless or scanned PDF returns a validation
+error and preserves the user draft; OCR is outside scope.
 
 ### Manual input
 
@@ -117,7 +117,7 @@ after the user explicitly submits the reviewed commit request.
 
 ## 7. Conversational corrections
 
-Sprint 5 uses a separate compiled correction LangGraph:
+Corrections use a separate compiled LangGraph:
 
 ```text
 Normalize instruction
@@ -142,7 +142,7 @@ endpoint never writes to the ledger.
 
 ## 8. AI provider organization
 
-Groq is the only production provider in the stable source. The model is configured
+The backend currently uses Groq. The model is configured
 through `GROQ_MODEL`, with `openai/gpt-oss-120b` as the default.
 
 The provider protocol and Groq adapter currently share `app/ai/providers.py` while
@@ -151,8 +151,8 @@ tests inject deterministic providers through the same contract; fake providers a
 never registered as runtime fallbacks.
 
 Provider authentication, rate-limit, timeout, malformed-output, and availability
-errors are translated into controlled application errors. Malformed structured output
-receives at most one controlled retry.
+errors are translated into documented HTTP errors. Malformed structured output is
+retried once.
 
 ## 9. Explicit commit sequence
 
@@ -208,8 +208,9 @@ API failures use a consistent envelope:
 ```
 
 Input size limits, PDF bounds, allowlisted correction fields, SQLAlchemy
-parameterization, prompt/data separation, strict schemas, trusted disclaimers, and
-human-review enforcement protect the workflow. Credentials, complaint content, raw
+parameterization, prompt/data separation, schema validation, fixed disclaimers, and
+an explicit frontend review step protect the workflow. Credentials,
+complaint content, raw
 prompts, and provider responses are not intentionally exposed in API errors.
 
 ## 12. Deployment
@@ -226,8 +227,9 @@ connectivity without calling an AI provider.
 
 ## 13. Limitations
 
-This project is an assignment-scale QMS workflow, not a validated production QMS. It
+This project is a prototype, not a validated production QMS. It
 does not provide authentication, electronic signatures, production OCR, mailbox
 integration, semantic duplicate detection, autonomous recall, final batch disposition,
 regulatory approval, or investigation closure. All AI-generated assessments and
-recommendations require review by authorised quality personnel.
+recommendations are intended for review by qualified personnel. Authentication and
+QA-role authorization are not implemented.

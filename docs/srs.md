@@ -3,12 +3,12 @@
 ## 1. Purpose
 
 This document defines the requirements for the AI-Powered Pharmaceutical Customer
-Complaint Management System. The application assists authorised quality personnel
+Complaint Management System. The application is designed to assist quality personnel
 with complaint intake, structured extraction, preliminary quality assessment,
 controlled corrections, investigation support, and explicit entry into a QMS ledger.
 
-The application is an assignment-scale decision-support workflow. It does not make
-final regulatory or product-disposition decisions.
+This prototype helps reviewers prepare complaint records. It does not make final
+regulatory or product-disposition decisions.
 
 ## 2. Scope
 
@@ -35,7 +35,7 @@ disposition, regulatory approval, or investigation closure.
 
 ### Primary user
 
-An authorised pharmaceutical quality or complaint-handling professional who:
+A pharmaceutical quality or complaint-handling professional who:
 
 - Receives complaint information
 - Reviews AI-extracted fields
@@ -60,9 +60,12 @@ flowchart LR
     Repo --> DB[("PostgreSQL")]
 ```
 
-Groq is the only production AI provider in the stable source. The model is configured
+The backend currently uses Groq. The model is configured
 through `GROQ_MODEL`, with `openai/gpt-oss-120b` as the default. Deterministic fake
 providers are restricted to tests.
+
+The frontend models a quality-review workflow, but the current application does not
+authenticate users or enforce a QA role at the API boundary.
 
 ## 5. Functional requirements
 
@@ -104,7 +107,7 @@ providers are restricted to tests.
 | FR-030 | The user shall be able to upload or drop a PDF complaint.                                                              |
 | FR-031 | The backend shall validate filename, content type, signature, size, page count, encryption, and extracted-text length. |
 | FR-032 | Selectable PDF text shall enter the same workflow as pasted text.                                                      |
-| FR-033 | A textless or scanned PDF shall produce a controlled error.                                                            |
+| FR-033 | A textless or scanned PDF shall return a clear validation error.                                                       |
 | FR-034 | A PDF-processing failure shall preserve the selected document and complaint draft where supported by the client.       |
 | FR-035 | Production-grade OCR is not required.                                                                                  |
 
@@ -135,16 +138,16 @@ The system shall support these nullable extraction fields:
 
 ### 5.6 Quality and risk assessment
 
-| ID     | Requirement                                                                       |
-| ------ | --------------------------------------------------------------------------------- |
-| FR-050 | Processing shall return a complaint category.                                     |
-| FR-051 | Processing shall recommend MINOR, MAJOR, or CRITICAL severity.                    |
-| FR-052 | Processing shall return a severity rationale.                                     |
-| FR-053 | Processing shall return an initial risk assessment.                               |
-| FR-054 | Processing shall return a suggested next action.                                  |
-| FR-055 | Incomplete evidence shall produce NEEDS_INFORMATION with explicit gaps.           |
-| FR-056 | Assessment output shall always require human review.                              |
-| FR-057 | The application shall replace provider disclaimer text with a trusted disclaimer. |
+| ID     | Requirement                                                                            |
+| ------ | -------------------------------------------------------------------------------------- |
+| FR-050 | Processing shall return a complaint category.                                          |
+| FR-051 | Processing shall recommend MINOR, MAJOR, or CRITICAL severity.                         |
+| FR-052 | Processing shall return a severity rationale.                                          |
+| FR-053 | Processing shall return an initial risk assessment.                                    |
+| FR-054 | Processing shall return a suggested next action.                                       |
+| FR-055 | Incomplete evidence shall produce NEEDS_INFORMATION with explicit gaps.                |
+| FR-056 | Assessment output shall always require human review.                                   |
+| FR-057 | The application shall replace provider disclaimer text with fixed application wording. |
 
 ### 5.7 Conversational corrections
 
@@ -191,7 +194,7 @@ The system shall support these nullable extraction fields:
 | FR-093 | Root causes shall remain explicitly unconfirmed.                                                |
 | FR-094 | CAPA actions shall remain unapproved and unimplemented suggestions.                             |
 | FR-095 | The system shall reject prohibited final-decision language.                                     |
-| FR-096 | RCA/CAPA output shall always require authorised human review.                                   |
+| FR-096 | RCA/CAPA output shall be presented for human review.                                            |
 
 ## 6. API requirements
 
@@ -334,5 +337,5 @@ The system is acceptable when:
 - No production identity, access control, electronic signatures, or audit-signature
   workflow is included.
 - No final regulatory decision is made by the application.
-- Human review remains mandatory before explicit commit and any downstream quality
+- Users should review the draft before committing it and before any downstream quality
   action.

@@ -54,6 +54,7 @@ export function ComplaintWorkspace() {
     selectedDocument,
     documentStatus,
     documentError,
+    documentErrorRetryable,
     documentWarnings,
     qualityAssessment,
     correctionInstruction,
@@ -458,7 +459,7 @@ export function ComplaintWorkspace() {
                 {documentSelectionError ?? documentError} Your draft and
                 selected document were preserved.
               </p>
-              {documentError && (
+              {documentError && documentErrorRetryable && (
                 <button
                   type="button"
                   onClick={processDocument}
@@ -482,10 +483,18 @@ export function ComplaintWorkspace() {
           <button
             type="button"
             onClick={processDocument}
-            disabled={!documentFile || documentStatus === 'uploading'}
+            disabled={
+              !documentFile ||
+              documentStatus === 'uploading' ||
+              Boolean(documentError && !documentErrorRetryable)
+            }
             className="w-full rounded-lg border border-teal-400 px-4 py-2 text-sm font-semibold text-teal-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {documentStatus === 'uploading' ? 'Processing PDF…' : 'Process PDF'}
+            {documentStatus === 'uploading'
+              ? 'Processing PDF…'
+              : documentError && !documentErrorRetryable
+                ? 'Choose another PDF'
+                : 'Process PDF'}
           </button>
         </section>
         {conversation.length > 0 && (

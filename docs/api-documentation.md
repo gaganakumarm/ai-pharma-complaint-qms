@@ -281,16 +281,3 @@ The identifier must be a UUID.
 |    502 | Provider authentication or malformed-output failure |
 |    503 | Database/provider unavailable or AI not configured  |
 |    504 | Provider timeout                                    |
-
-## 13. Safety and persistence rules
-
-- AI output always requires authorised QA review.
-- Trusted disclaimers are enforced by the application.
-- Confirmed root cause, approved CAPA, final recall, release, rejection, and batch
-  disposition are prohibited.
-- Text, PDF, and correction processing do not create records.
-- Duplicate checks are read-only.
-- Only POST /api/complaints inserts a complaint.
-- Health and readiness consume no external-model quota.
-- Keys, prompts, complaint text, and raw provider output must not be included in client
-  logs or screenshots.

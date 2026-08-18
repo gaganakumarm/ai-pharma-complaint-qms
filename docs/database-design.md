@@ -72,13 +72,13 @@ Table name: `complaints`
 | `expiry_retest_date`             | VARCHAR(100)              |  Yes | Expiry or retest information               |
 | `originating_site_block`         | VARCHAR(200)              |  Yes | Manufacturing site or block                |
 | `impacted_non_product_materials` | TEXT                      |  Yes | Packaging or other material context        |
-| `complaint_category`             | VARCHAR(150)              |   No | Reviewed complaint category                |
-| `complaint_description`          | TEXT                      |   No | Reviewed complaint description             |
+| `complaint_category`             | VARCHAR(150)              |   No | Submitted complaint category               |
+| `complaint_description`          | TEXT                      |   No | Submitted complaint description            |
 | `suggested_severity`             | `complaint_severity` enum |  Yes | AI-assisted severity recommendation        |
 | `initial_risk_assessment`        | TEXT                      |  Yes | Preliminary risk assessment                |
 | `suggested_next_action`          | TEXT                      |  Yes | Advisory next action                       |
 | `status`                         | `complaint_status` enum   |   No | Persisted workflow status                  |
-| `raw_input`                      | TEXT                      |  Yes | Optional original input retained at commit |
+| `raw_input`                      | TEXT                      |  Yes | Optional original input supplied at commit |
 | `created_at`                     | TIMESTAMPTZ               |   No | Database-generated creation time           |
 | `updated_at`                     | TIMESTAMPTZ               |   No | Creation/update time                       |
 
@@ -122,7 +122,8 @@ Optional blank strings are normalized to null before persistence.
 - `COMMITTED`
 
 The current commit service persists new records with `COMMITTED` status. Earlier
-status values remain part of the domain and database enum for workflow compatibility.
+status values remain in the enum, although the current API does not implement
+draft-to-commit status transitions.
 
 ## 5. Complaint-number generation
 
@@ -138,14 +139,15 @@ The column default follows this format:
 CMP-YYYY-NNNNNN
 ```
 
-Example:
+Example format:
 
 ```text
 CMP-2026-000021
 ```
 
 The database sequence provides concurrency-safe numbering. The UUID remains the
-canonical API identifier.
+canonical API identifier. The numeric sequence is global and does not reset when the
+calendar year changes.
 
 ## 6. Constraints and indexes
 
@@ -202,8 +204,10 @@ sequenceDiagram
     Service-->>API: Committed complaint
 ```
 
-If any operation fails, the service rolls back the session and propagates a controlled
-error. Read operations do not modify database state.
+If any operation fails, the service rolls back the session and propagates the error.
+Provider and validation errors use documented application envelopes; an unexpected
+database exception can still result in a generic server error. Read operations do not
+modify database state.
 
 ## 9. Session lifecycle
 
@@ -248,20 +252,21 @@ outside the repository. No embeddings or semantic-vector database is used.
 
 ## 12. Persistence boundaries
 
-| Operation                   | Database effect                        |
-| --------------------------- | -------------------------------------- |
-| Text processing             | None                                   |
-| PDF processing              | None                                   |
-| Quality/risk assessment     | None                                   |
-| Conversational correction   | None                                   |
-| Completeness calculation    | None                                   |
-| Duplicate check             | Read-only                              |
-| RCA/CAPA generation         | None                                   |
-| Complaint listing/retrieval | Read-only                              |
-| Explicit complaint commit   | Inserts exactly one reviewed complaint |
+| Operation                   | Database effect                       |
+| --------------------------- | ------------------------------------- |
+| Text processing             | None                                  |
+| PDF processing              | None                                  |
+| Quality/risk assessment     | None                                  |
+| Conversational correction   | None                                  |
+| Completeness calculation    | None                                  |
+| Duplicate check             | Read-only                             |
+| RCA/CAPA generation         | None                                  |
+| Complaint listing/retrieval | Read-only                             |
+| Explicit complaint commit   | Inserts one validated request payload |
 
-This boundary ensures that external AI output cannot become a QMS ledger record
-without an explicit reviewed commit request.
+This boundary ensures that external AI output cannot become a ledger record without an
+explicit commit request. The frontend presents a review step, but the backend does not
+authenticate the caller or verify a QA approval.
 
 ## 13. Migrations
 
@@ -292,5 +297,11 @@ and a verified backup/recovery plan.
   management, electronic signatures, or a production audit trail.
 - Date fields are intentionally stored as source-provided strings because complaint
   documents may contain partial or non-ISO pharmaceutical date formats.
+- The current frontend does not include `raw_input` in its commit request, so that
+  column normally remains null for browser-created records.
+- The API currently exposes create, list, and retrieve operations only. There is no
+  complaint update route, and no revision-history table records field-level changes.
+- `updated_at` supports future ORM updates but normally equals `created_at` in the
+  current create-only workflow.
 - RCA/CAPA, duplicate, and completeness outputs are advisory and not persisted as
   approved regulatory decisions.

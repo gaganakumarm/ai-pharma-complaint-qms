@@ -1,396 +1,299 @@
-# AI-Powered Pharmaceutical Customer Complaint Management System
+# AI-Powered Pharmaceutical Complaint Management System
 
-An assignment-scale quality-management workflow for receiving pharmaceutical customer
-complaints, converting unstructured text or selectable-text PDFs into a reviewable
-draft, assisting quality assessment, and explicitly committing an authorised record to
-a PostgreSQL QMS ledger.
+A full-stack complaint-intake application for pharmaceutical quality teams. It turns
+unstructured complaint text or selectable-text PDFs into an editable complaint draft,
+adds decision-support information, and writes the record to PostgreSQL only after an
+explicit user commit.
 
-The application supports both active pharmaceutical ingredient (API) and finished
-dosage form (FDF) complaint contexts. AI output is advisory: authorised quality
-personnel must review every extracted field, assessment, correction, duplicate match,
-and RCA/CAPA recommendation before committing a complaint.
+The project demonstrates a controlled boundary between AI assistance and the quality
+record: Groq and LangGraph help structure and assess a complaint, while local schema
+validation, deterministic rules, and the user determine what can be committed.
 
-> **Screenshot placeholder — main workspace:** Add
-> `docs/screenshots/01-main-workspace.png` after capturing the application with only
-> fictional data and no credentials or personal information visible.
+> This is a demonstration and decision-support system, not a validated production QMS.
+> AI output requires review by authorised quality personnel.
 
-## Problem and solution
+## What it does
 
-Pharmaceutical complaints commonly arrive as inconsistent emails, narrative text, or
-PDF documents. Important product, batch, quantity, defect, and site details can be
-difficult to transfer consistently into a structured quality record.
+- Accepts manual complaint entry, pasted complaint text, and selectable-text PDFs.
+- Extracts structured API and FDF complaint fields with a Groq-hosted LLM.
+- Produces a preliminary category, severity, rationale, risk assessment, next action,
+  and information gaps.
+- Calculates complaint completeness with deterministic local rules.
+- Identifies possible duplicate complaints using explainable, rule-based scoring.
+- Generates advisory root-cause, investigation, corrective-action, and
+  preventive-action recommendations.
+- Applies conversational corrections through an allowlisted patch workflow while
+  preserving unrelated fields.
+- Keeps AI processing separate from persistence and requires an explicit commit.
+- Lists committed complaints and retrieves individual records from PostgreSQL.
+- Preserves the draft and selected PDF after retryable processing failures.
 
-This project provides one controlled workspace that:
+## Architecture and workflow
 
-- accepts manual, text/email-style, and selectable-text PDF input;
-- extracts structured complaint fields through Groq and LangGraph;
-- recommends an initial category, severity, risk, and next action;
-- supports conversational correction of allowlisted fields;
-- calculates completeness and possible duplicates deterministically;
-- provides advisory root-cause and CAPA investigation suggestions; and
-- writes to PostgreSQL only after an explicit reviewed commit.
-
-It does not replace an approved QMS or make final regulatory, recall, batch-release,
-batch-rejection, investigation-closure, root-cause, or CAPA decisions.
-
-## Main capabilities
-
-- Editable complaint form for API and FDF complaints
-- Manual complaint entry without an AI call
-- Structured extraction from pasted complaint text
-- Selectable-text PDF extraction with bounded upload, page, and text limits
-- Preliminary pharmaceutical quality and risk assessment
-- Suggested `MINOR`, `MAJOR`, or `CRITICAL` severity
-- Conversational correction with protected-field and explicit-clearing controls
-- Deterministic five-field completeness calculation
-- Bounded PostgreSQL-backed duplicate candidate retrieval and deterministic scoring
-- Advisory RCA/CAPA hypotheses, evidence needs, and action suggestions
-- Explicit QMS commit with a UUID and generated complaint number
-- Pagination and retrieval of committed complaints
-- Standard API error envelope, liveness, and PostgreSQL readiness endpoints
-
-## Architecture
-
-The system separates presentation, HTTP transport, application coordination, domain
-rules, AI integration, document handling, repositories, and database infrastructure.
-This provides practical dependency inversion and keeps transaction ownership outside
-the repository and AI layers.
-
-> **Diagram placeholder — system architecture:** Export the verified Mermaid component
-> diagram from [docs/architecture.md](docs/architecture.md) as
-> `docs/screenshots/system-architecture.png`, then replace this placeholder with the
-> image.
-
-Current logical flow:
-
-```text
-React UI → Redux Toolkit → FastAPI routes → Application services
-                                      ├─→ LangGraph → Groq
-                                      ├─→ Deterministic rules
-                                      ├─→ PDF text extraction
-                                      └─→ Complaint repository → Async SQLAlchemy → PostgreSQL
+```mermaid
+flowchart LR
+    Input{Manual, text, or PDF} --> UI[React and Redux Toolkit]
+    UI --> API[FastAPI]
+    API --> Services[Application services]
+    Services --> Graphs[LangGraph workflows]
+    Graphs --> Groq[Groq structured output]
+    Services --> Rules[Completeness and duplicate rules]
+    Graphs --> Draft[Validated editable draft]
+    Rules --> Draft
+    Draft --> Review[User review and correction]
+    Review -->|Explicit commit| Repository[Repository and SQLAlchemy]
+    Repository --> DB[(PostgreSQL)]
 ```
 
-AI processing returns an in-memory draft. The persistence path is separate:
+Text and PDF processing follow a LangGraph pipeline that normalizes input, extracts
+fields, validates the extraction, assesses quality and risk, calculates completeness,
+generates RCA/CAPA guidance, validates the result, and prepares the response. A
+separate correction graph proposes and validates field-level patches before merging
+them into the draft.
 
-```text
-Reviewed form → Complaint service → Complaint repository → PostgreSQL transaction
-```
+Neither graph writes to the database. `POST /api/complaints` is the only endpoint that
+creates a complaint record.
 
-Detailed diagrams and boundaries are documented in
-[System Architecture](docs/architecture.md) and
-[LangGraph Workflows](docs/langgraph-workflows.md).
+### Engineering approach
 
-## LangGraph workflow
+- Layered React, API, service, AI-provider, repository, and persistence boundaries
+- Redux Toolkit for explicit asynchronous UI state transitions
+- Dependency injection through FastAPI dependencies and service constructors
+- Repository pattern with service-owned commit and rollback
+- Pydantic and Zod validation at backend and frontend boundaries
+- Replaceable AI-provider protocol around the Groq implementation
+- Deterministic completeness and duplicate scoring outside the LLM
+- Separate initial-processing and correction LangGraph workflows
+- Alembic-managed PostgreSQL schema and concurrency-safe complaint numbering
+- Structured provider-error translation and retry-aware frontend behavior
 
-A complaint-processing request coordinates these stages:
-
-1. Normalize input.
-2. Extract complaint fields.
-3. Validate extraction.
-4. Assess pharmaceutical quality and risk.
-5. Validate the assessment and trusted disclaimer.
-6. Calculate deterministic completeness.
-7. Generate advisory RCA/CAPA recommendations.
-8. Validate RCA/CAPA safety rules.
-9. Prepare the response.
-
-A separate correction graph extracts an allowlisted patch, validates and merges it
-atomically, recalculates warnings, and conditionally regenerates assessment and
-RCA/CAPA results. Neither graph persists a complaint.
-
-One processing request may use separate structured Groq calls for extraction,
-quality/risk assessment, and RCA/CAPA generation. Provider authentication, quota,
-latency, and token usage therefore apply per model call.
+See [System Architecture](docs/architecture.md) and
+[LangGraph Workflows](docs/langgraph-workflows.md) for the detailed design.
 
 ## Technology stack
 
-| Area                 | Technology                                                   |
-| -------------------- | ------------------------------------------------------------ |
-| Frontend             | React, TypeScript, Vite, Redux Toolkit, React Redux          |
-| Forms and validation | React Hook Form, Zod                                         |
-| Styling              | Tailwind CSS, Inter                                          |
-| HTTP client          | Axios                                                        |
-| Backend              | Python 3.11+, FastAPI, Uvicorn, Pydantic Settings            |
-| AI orchestration     | LangGraph, Groq SDK, strict Pydantic schemas                 |
-| PDF handling         | PyMuPDF                                                      |
-| Persistence          | PostgreSQL 16, SQLAlchemy 2 async, asyncpg, Alembic          |
-| Testing              | Pytest, pytest-asyncio, HTTPX, Vitest, React Testing Library |
-| Quality              | Ruff, strict MyPy, ESLint, Prettier, TypeScript              |
-| Delivery             | Docker Compose, Nginx, GitHub Actions                        |
+| Area | Technology |
+| --- | --- |
+| Frontend | React 18, TypeScript, Redux Toolkit, React Hook Form, Zod, Axios |
+| Styling | Tailwind CSS, Google Inter |
+| Backend | Python 3.11+, FastAPI, Pydantic |
+| AI orchestration | LangGraph |
+| LLM provider | Groq SDK with structured JSON Schema output |
+| PDF processing | PyMuPDF; selectable-text PDFs only |
+| Persistence | PostgreSQL 16, async SQLAlchemy, asyncpg, Alembic |
+| Testing | Pytest, Vitest, Testing Library, Playwright Core |
+| Delivery | Docker Compose, Uvicorn, Nginx |
 
-## Project structure
+The default Groq model is `openai/gpt-oss-120b` and can be changed through
+`GROQ_MODEL`. Model output is parsed into strict schemas before it reaches the
+application workflow. See [LLM Integration and Safety](docs/llm-integration-and-safety.md)
+for provider behavior and decision boundaries.
 
-```text
-backend/
-  app/
-    ai/                 Provider contract, Groq adapter, prompts, graphs
-    api/routes/         FastAPI HTTP endpoints
-    core/               Settings and error handling
-    domain/             Complaint enums and domain concepts
-    infrastructure/     Async database engine, sessions, models
-    repositories/       Complaint persistence operations
-    schemas/            Strict API and AI data contracts
-    services/           Application use cases and deterministic rules
-  alembic/              Database migrations
-  tests/                Unit, API, provider, PDF, and PostgreSQL tests
-frontend/
-  src/
-    app/                 Redux store and typed hooks
-    features/complaints/ Complaint workspace, state, API, schemas
-    shared/api/          Shared Axios client
-    styles/              Tailwind and Inter styles
-  scripts/               Deterministic manual acceptance runner
-docs/                     Architecture, SRS, database, API, AI, and workflow docs
-sample-data/              Fictional FDF, API, and textless PDF samples
-```
+## Getting started
 
-## Prerequisites
+### Prerequisites
 
-- Docker Desktop with Docker Compose, or:
-  - Python 3.11 or newer
-  - Node.js 22 and npm
-  - PostgreSQL 16
-- A Groq API key only when exercising real AI processing
+- Docker Desktop with Docker Compose
+- A Groq API key
 
-All commands below are written for Windows PowerShell and run from the repository
-root unless a section changes directory.
+Node.js 20+ and Python 3.11+ are required only when running or testing services
+outside Docker.
 
-## Environment setup
+### Configuration
 
-Create the ignored local environment file:
+From the repository root, create the local environment file:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-For real Groq processing, edit `.env` locally without committing or displaying its
-contents:
+Set the key in `.env`:
 
-```env
-GROQ_API_KEY=replace_with_your_groq_api_key
-GROQ_MODEL=openai/gpt-oss-120b
+```dotenv
+GROQ_API_KEY=your_groq_api_key
 ```
 
-`GROQ_MODEL` remains configurable. Retired models referenced in the original
-assignment were replaced by the currently configured supported default. Groq is the
-only production AI provider in the stable source; there is no automatic Gemini
-fallback. Manual entry and review remain available when AI processing cannot run.
+Important configuration values:
 
-Never commit `.env`, credentials, complaint personal information, prompts, or raw
-provider responses.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Groq model identifier |
+| `MAX_UPLOAD_SIZE_MB` | `10` | Maximum uploaded PDF size |
+| `MAX_PDF_PAGES` | `50` | Maximum PDF page count |
+| `MAX_PDF_TEXT_LENGTH` | `20000` | Maximum extracted PDF text length |
+| `MAX_TEXT_INPUT_LENGTH` | `20000` | Maximum pasted-text length |
+| `VITE_AI_REQUEST_TIMEOUT_MS` | `120000` | Frontend timeout for AI workflows |
 
-## Start with Docker Compose
+Never commit a real API key.
+
+### Run with Docker Compose
 
 ```powershell
-docker compose config --quiet
 docker compose up --build -d
+```
+
+Compose starts PostgreSQL, applies Alembic migrations during backend startup, and
+serves the built frontend through Nginx.
+
+| Service | URL |
+| --- | --- |
+| Application | http://localhost:5173 |
+| OpenAPI / Swagger UI | http://localhost:8000/docs |
+| Health check | http://localhost:8000/health |
+| Database readiness | http://localhost:8000/ready |
+
+Inspect service state with:
+
+```powershell
 docker compose ps
 ```
 
-Open:
-
-- Frontend: <http://localhost:5173>
-- Swagger UI: <http://localhost:8000/docs>
-- Health: <http://localhost:8000/health>
-- Readiness: <http://localhost:8000/ready>
-
-Inspect or stop the stack:
+Stop the application with:
 
 ```powershell
-docker compose logs --tail 100 backend frontend postgres
 docker compose down
 ```
 
-`docker compose down` preserves the named PostgreSQL volume. Do not add `--volumes`
-unless deleting local ledger data is intentional.
+The PostgreSQL volume is retained by this command.
 
-## Local development
+## Demo data
 
-Start PostgreSQL:
+The [`sample-data`](sample-data/) directory contains fictional examples:
 
-```powershell
-docker compose up -d postgres
-```
+- `fictional-fdf-complaint.pdf`
+- `fictional-api-complaint.pdf`
+- `fictional-textless-complaint.pdf`
 
-Backend terminal:
+The textless sample should produce a `NO_EXTRACTABLE_TEXT` response. OCR is not
+implemented.
 
-```powershell
-Set-Location backend
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-alembic upgrade head
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+Suggested workflow:
 
-Frontend terminal:
+1. Paste fictional complaint text or process an FDF/API PDF.
+2. Review the populated complaint form and AI assessment.
+3. Inspect completeness, possible duplicates, and RCA/CAPA guidance.
+4. Correct a field with a natural-language instruction.
+5. Review every updated field.
+6. Commit the approved draft to the complaint ledger.
 
-```powershell
-Set-Location frontend
-npm ci
-npm run dev
-```
+## API overview
 
-When the backend runs outside Compose, the root `.env.example` database URL points to
-PostgreSQL at `localhost:5432`. The Compose backend uses the service hostname
-`postgres` automatically.
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Application liveness |
+| `GET` | `/ready` | PostgreSQL connectivity |
+| `POST` | `/api/complaints/process-text` | Process unstructured complaint text |
+| `POST` | `/api/complaints/process-document` | Process a selectable-text PDF |
+| `POST` | `/api/complaints/correct` | Apply a validated conversational correction |
+| `POST` | `/api/complaints/check-duplicates` | Run deterministic duplicate scoring |
+| `POST` | `/api/complaints` | Commit a reviewed complaint |
+| `GET` | `/api/complaints` | List committed complaints with pagination |
+| `GET` | `/api/complaints/{complaint_id}` | Retrieve one committed complaint |
 
-## Database migrations
+Detailed request, response, validation, and error contracts are available in
+[API Documentation](docs/api-documentation.md) and the running Swagger UI.
 
-Run from `backend` with the virtual environment active:
+## Development and verification
 
-```powershell
-alembic current
-alembic upgrade head
-```
-
-Migration history is in `backend/alembic/versions`. Do not downgrade a development or
-shared database merely to verify the application.
-
-## Quality and test commands
-
-Backend checks, from `backend`:
+### Backend
 
 ```powershell
-ruff check .
-ruff format --check .
-mypy app
-pytest
+cd backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check app tests
+.\.venv\Scripts\python.exe -m mypy app
 ```
 
-PostgreSQL-enabled tests use the isolated test service:
+Provider smoke tests are credential-gated, and PostgreSQL integration tests require
+their documented database configuration. Expected skips therefore depend on the test
+environment.
+
+### Frontend
 
 ```powershell
-Set-Location ..
-docker compose --profile test up -d postgres_test
-$env:TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5433/pharma_qms_test"
-Set-Location backend
-pytest
-Remove-Item Env:TEST_DATABASE_URL
+cd frontend
+npm.cmd ci
+npm.cmd test
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run build
 ```
 
-Frontend checks, from `frontend`:
+The repository includes unit, API, service, graph, provider-contract, PDF-validation,
+PostgreSQL integration, frontend component/state, and browser-acceptance coverage.
+See [Testing and Verification](docs/testing-and-sprints.md) for scope, prerequisites,
+and recorded evidence.
 
-```powershell
-npm audit
-npm audit --omit=dev
-npm run lint
-npm run format
-npm run typecheck
-npm test
-npm run build
+Current local verification:
+
+| Check | Result |
+| --- | --- |
+| Backend Pytest suite | 107 passed, 28 environment-gated skips |
+| Ruff | Passed |
+| Strict MyPy | Passed |
+| Frontend Vitest suite | 22 passed across 4 test files |
+| TypeScript typecheck | Passed |
+| ESLint | Passed |
+| Frontend production build | Passed |
+
+## Project structure
+
+```text
+.
+|-- backend/
+|   |-- app/
+|   |   |-- ai/                 # LangGraph workflows, prompts, Groq provider
+|   |   |-- api/                # FastAPI routes and dependencies
+|   |   |-- core/               # Configuration, exceptions, error mapping
+|   |   |-- infrastructure/     # Async database setup and ORM models
+|   |   |-- repositories/       # Complaint persistence queries
+|   |   |-- schemas/            # Pydantic request and response contracts
+|   |   `-- services/           # Application and deterministic rule services
+|   |-- alembic/                # Database migrations
+|   `-- tests/                  # Backend and integration tests
+|-- frontend/
+|   |-- src/
+|   |   |-- app/                # Redux store and typed hooks
+|   |   |-- features/complaints # Complaint UI, state, schemas, and API client
+|   |   `-- shared/             # Shared HTTP infrastructure
+|   `-- scripts/                # Browser acceptance workflow
+|-- docs/                       # Architecture, API, data, workflow, and test docs
+|-- sample-data/                # Fictional PDF fixtures
+`-- docker-compose.yml
 ```
 
-Credential-gated real-provider smoke tests are intentionally separate from the
-default deterministic suite. They consume external quota and must use only fictional
-data.
+## Safety boundaries and limitations
 
-## Example reviewer workflow
-
-1. Open the complaint workspace.
-2. Paste fictional complaint text or choose a fictional FDF/API PDF from
-   `sample-data`.
-3. Process the input and review the extracted editable fields.
-4. Review category, severity, risk, next action, completeness, duplicates, and
-   RCA/CAPA recommendations.
-5. Correct an allowlisted value conversationally and verify reassessment behavior.
-6. Manually edit any remaining field as needed.
-7. Explicitly commit the reviewed complaint.
-8. Record the generated complaint number and retrieve the committed UUID through the
-   API.
-
-Processing, correction, completeness, duplicate checking, and RCA/CAPA generation do
-not insert ledger rows. Only `POST /api/complaints` commits a complaint.
-
-## Fictional sample data
-
-The repository includes:
-
-- `sample-data/fictional-fdf-complaint.pdf`
-- `sample-data/fictional-api-complaint.pdf`
-- `sample-data/fictional-textless-complaint.pdf`
-- `sample-data/generate_pdf_samples.py`
-
-The textless document exercises the controlled no-readable-text failure path. The
-samples are fictional and must not be replaced with real patient, customer, or
-commercially sensitive complaint data in screenshots or demonstrations.
-
-## Screenshots and diagrams
-
-Do not fabricate screenshots or commit images containing keys, personal information,
-absolute paths, developer tools, or raw provider responses.
-
-> **Screenshot placeholder — populated FDF form:**
-> `docs/screenshots/02-fdf-populated-form.png`
-
-> **Screenshot placeholder — quality and risk assessment:**
-> `docs/screenshots/03-quality-risk-panel.png`
-
-> **Screenshot placeholder — conversational correction:**
-> `docs/screenshots/04-conversational-correction.png`
-
-> **Screenshot placeholder — completeness and duplicate results:**
-> `docs/screenshots/05-completeness-panel.png` and
-> `docs/screenshots/06-duplicate-panel.png`
-
-> **Screenshot placeholder — RCA/CAPA recommendations:**
-> `docs/screenshots/07-rca-capa-panel.png`
-
-> **Screenshot placeholder — committed complaint:**
-> `docs/screenshots/08-committed-complaint.png`
-
-See the [screenshot capture checklist](docs/screenshots/README.md) for recommended
-filenames and safe capture instructions.
+- AI output is advisory and always requires human review.
+- Root-cause suggestions are hypotheses, not confirmed investigation findings.
+- CAPA suggestions are not approved or implemented CAPA records.
+- Duplicate scores identify possible matches; they do not confirm duplicates.
+- AI processing and correction do not persist complaints automatically.
+- PDF intake supports selectable text but not OCR.
+- Authentication, role-based authorization, electronic signatures, immutable audit
+  history, formal approval workflows, and validated-system controls are not included.
+- Provider availability, authentication, rate limits, and latency affect AI features.
+- The application has not been validated for regulated production use.
 
 ## Documentation
 
-- [System architecture](docs/architecture.md)
-- [Software requirements specification](docs/srs.md)
-- [LangGraph workflows](docs/langgraph-workflows.md)
-- [LLM integration and safety](docs/llm-integration-and-safety.md)
-- [Database design](docs/database-design.md)
-- [API documentation](docs/api-documentation.md)
-- [Testing and sprint report](docs/testing-and-sprints.md)
-- [Requirements traceability](docs/requirements-traceability.md)
-- [Submission summary](docs/submission.md)
-- [Screenshot capture checklist](docs/screenshots/README.md)
+- [Software Requirements Specification](docs/srs.md)
+- [System Architecture](docs/architecture.md)
+- [LangGraph Workflows](docs/langgraph-workflows.md)
+- [LLM Integration and Safety](docs/llm-integration-and-safety.md)
+- [Database Design](docs/database-design.md)
+- [API Documentation](docs/api-documentation.md)
+- [Requirements Traceability](docs/requirements-traceability.md)
+- [Testing and Verification](docs/testing-and-sprints.md)
 
-## Security, privacy, and human review
+## Getting help and contributing
 
-- Keep credentials in the ignored local `.env` or deployment secret storage.
-- Do not expose the application directly to an untrusted network; authentication and
-  role-based access control are outside this assignment.
-- Do not log complaint content, customer information, prompts, or raw model output.
-- Treat uploaded files and complaint narratives as untrusted data.
-- Treat every AI result, duplicate match, and RCA/CAPA suggestion as advisory.
-- Require authorised pharmaceutical quality review before explicit commit or any
-  downstream action.
+Start with the Swagger UI and the linked technical documentation when diagnosing an
+API or workflow issue. When reporting a problem, include the failing command, endpoint,
+HTTP status, sanitized error response, and relevant service logs. Never include API
+keys, `.env` contents, or real complaint data.
 
-## Known limitations
-
-- This is not a validated production QMS and has no authentication, authorisation,
-  electronic signatures, or formal audit-signature workflow.
-- PDF intake supports selectable text only; production OCR is not implemented.
-- Email-style intake means pasted narrative content; mailbox integration is not
-  implemented.
-- Duplicate detection is deterministic lexical matching, not semantic matching.
-- External Groq availability, quota, latency, and model support are outside the
-  application’s control.
-- The application does not autonomously recall products, dispose batches, approve or
-  close CAPA, confirm root cause, close investigations, or make regulatory decisions.
-
-## Assignment status
-
-The implemented assignment scope covers the full complaint intake, correction,
-quality-support, deterministic enhancement, and explicit-persistence workflow. The
-stable production AI integration is Groq; deterministic providers remain test-only.
-Historical external-provider limitations do not weaken the deterministic safety or
-manual-review boundaries.
-
-## Demo video
-
-> **Demo video placeholder:** Add a public or reviewer-accessible 3–5 minute demo link
-> here after recording the fictional FDF/API workflow. Verify that no credential,
-> personal information, local absolute path, or raw provider response is visible.
+Contributions should preserve the explicit human-review boundary, include tests for
+changed behavior, and keep API and architecture documentation aligned with the code.

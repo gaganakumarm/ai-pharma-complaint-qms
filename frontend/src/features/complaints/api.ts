@@ -11,6 +11,14 @@ import type {
   RcaCapaRecommendations,
 } from './types'
 
+const configuredAiTimeout = Number(
+  import.meta.env.VITE_AI_REQUEST_TIMEOUT_MS ?? 120_000,
+)
+const AI_REQUEST_TIMEOUT_MS =
+  Number.isFinite(configuredAiTimeout) && configuredAiTimeout > 0
+    ? configuredAiTimeout
+    : 120_000
+
 export interface PaginatedComplaints {
   items: Array<
     Pick<
@@ -65,6 +73,7 @@ export async function correctComplaint(
       current_possible_duplicate_matches: duplicates,
       current_rca_capa_recommendations: rcaCapa,
     },
+    { timeout: AI_REQUEST_TIMEOUT_MS },
   )
   return response.data
 }
@@ -115,6 +124,7 @@ export async function processComplaintText(text: string) {
   const response = await apiClient.post<ProcessTextResponse>(
     '/api/complaints/process-text',
     { text },
+    { timeout: AI_REQUEST_TIMEOUT_MS },
   )
   return response.data
 }
@@ -125,6 +135,7 @@ export async function processComplaintDocument(file: File) {
   const response = await apiClient.post<ProcessDocumentResponse>(
     '/api/complaints/process-document',
     formData,
+    { timeout: AI_REQUEST_TIMEOUT_MS },
   )
   return response.data
 }

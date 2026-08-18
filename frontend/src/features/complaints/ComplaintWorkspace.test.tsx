@@ -4,6 +4,7 @@ import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppStore } from '../../app/store'
+import { ApiRequestError } from '../../shared/api/client'
 import {
   commitComplaint,
   correctComplaint,
@@ -768,6 +769,36 @@ describe('ComplaintWorkspace', () => {
       await screen.findByText(/PDF service unavailable/),
     ).toBeInTheDocument()
     expect(screen.getByText('retry.pdf')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Retry PDF' }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not offer retry for a textless PDF validation failure', async () => {
+    mockedProcessDocument.mockRejectedValueOnce(
+      new ApiRequestError(
+        'No readable text was found. Upload a text-based PDF or paste the complaint text.',
+        'NO_EXTRACTABLE_TEXT',
+        422,
+        false,
+      ),
+    )
+    const user = userEvent.setup()
+    renderWorkspace()
+    await user.upload(
+      screen.getByLabelText('Choose a PDF or drag it here'),
+      new File(['%PDF-test'], 'textless.pdf', { type: 'application/pdf' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Process PDF' }))
+    expect(
+      await screen.findByText(/No readable text was found/),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Retry PDF' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Choose another PDF' }),
+    ).toBeDisabled()
   })
 
   it.each(['MINOR', 'CRITICAL'] as const)(

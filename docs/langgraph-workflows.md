@@ -9,7 +9,7 @@ The application uses two compiled LangGraph workflows:
 
 LangGraph coordinates application steps but does not own HTTP handling, database
 transactions, or user-interface state. Groq interprets untrusted complaint language,
-while Pydantic schemas and deterministic domain rules remain the final authority.
+while Pydantic schemas and local rules validate the result.
 
 Neither graph writes to PostgreSQL. A complaint is persisted only through the separate
 explicit commit endpoint.
@@ -26,7 +26,7 @@ The provider operations are:
 - Extract an allowlisted correction patch
 - Generate advisory RCA/CAPA recommendations
 
-The stable runtime supplies the Groq adapter. Automated tests can inject deterministic
+The running application supplies the Groq adapter. Automated tests can inject predictable
 providers through the same protocol. Fake providers are test-only and are never
 runtime fallbacks.
 
@@ -106,7 +106,7 @@ Validation enforces:
 - Blank-string normalization
 - Nullable-field semantics
 
-Invalid output becomes a controlled malformed-provider-response error and never
+Invalid output becomes a malformed-provider-response error and never
 reaches the frontend draft.
 
 The node also produces deterministic warnings for missing important fields.
@@ -139,14 +139,14 @@ Local validation:
 - Enforces COMPLETE or NEEDS_INFORMATION consistency
 - Requires information gaps for incomplete evidence
 - Forces human review to true
-- Replaces provider disclaimer text with the trusted application disclaimer
+- Replaces provider disclaimer text with fixed application wording
 - Rejects confirmed root cause and other prohibited final-decision language
 
 ### 3.6 Calculate completeness
 
 Node: **assess_completeness**
 
-The deterministic **ComplaintCompletenessChecker** evaluates five required fields:
+The **ComplaintCompletenessChecker** evaluates five required fields with fixed rules:
 
 - Customer name
 - Product name
@@ -194,7 +194,7 @@ Local controls:
 - Enforce list and text bounds
 - Reject unknown object fields
 - Force human review to true
-- Replace the disclaimer with trusted application wording
+- Replace the disclaimer with fixed application wording
 - Reject confirmed root cause
 - Reject approved, implemented, or closed CAPA
 - Reject final release, rejection, or recall instructions
@@ -317,7 +317,7 @@ Applied corrections require:
 
 Node: **merge_patch**
 
-The deterministic **merge_correction** function applies only validated updates to a
+The **merge_correction** function applies only validated updates to a
 copy of the complaint.
 
 Properties:
@@ -361,14 +361,14 @@ Node: **recommend_rca_capa**
 
 RCA/CAPA is regenerated when a relevant complaint field changed or when no current
 validated recommendation exists. Otherwise, the existing validated recommendation is
-preserved deterministically.
+preserved by the merge rules.
 
 ### 5.9 Validate correction RCA/CAPA
 
 Node: **validate_rca_capa**
 
 The node validates regenerated or preserved recommendations against
-**RcaCapaRecommendations** and the deterministic RCA/CAPA safety rules.
+**RcaCapaRecommendations** and the local RCA/CAPA validation rules.
 
 ### 5.10 Prepare correction response
 
@@ -435,23 +435,23 @@ The Groq adapter:
 - Requests strict JSON-schema output
 - Parses JSON
 - Applies strict Pydantic validation
-- Allows one controlled retry for malformed output
+- Allows one retry for malformed output
 - Does not retry authentication or rate-limit errors
 - Closes each async client
 
 ## 8. Error behavior
 
-Graph and provider failures map to controlled application errors:
+Graph and provider failures map to documented HTTP errors:
 
 | Category                    | API behavior                       |
 | --------------------------- | ---------------------------------- |
 | Invalid input               | 422 validation/processing response |
-| Missing AI configuration    | 503 controlled response            |
-| Authentication failure      | 502 controlled response            |
-| Rate limit                  | 429 controlled response            |
-| Timeout                     | 504 controlled response            |
-| Malformed structured output | 502 controlled response            |
-| Provider unavailable        | 503 controlled response            |
+| Missing AI configuration    | HTTP 503                           |
+| Authentication failure      | HTTP 502                           |
+| Rate limit                  | HTTP 429                           |
+| Timeout                     | HTTP 504                           |
+| Malformed structured output | HTTP 502                           |
+| Provider unavailable        | HTTP 503                           |
 
 The frontend preserves the current draft on recoverable processing or correction
 failure. No failure path automatically commits a complaint.
@@ -483,6 +483,6 @@ They do not:
 - Close an investigation
 - Make a final regulatory decision
 
-Authorised quality personnel remain responsible for reviewing the draft, assessment,
+The user remains responsible for reviewing the draft, assessment,
 duplicate candidates, completeness guidance, RCA/CAPA suggestions, and explicit
 ledger commit.

@@ -6,6 +6,7 @@ import {
   processComplaintText,
   correctComplaint,
 } from './api'
+import { getApiErrorDetails } from '../../shared/api/client'
 import type {
   ComplaintDraft,
   ComplaintRecord,
@@ -59,6 +60,7 @@ export interface ComplaintState {
     | 'succeeded'
     | 'failed'
   documentError: string | null
+  documentErrorRetryable: boolean
   documentWarnings: string[]
   qualityAssessment: ComplaintQualityAssessment | null
   correctionInstruction: string
@@ -88,6 +90,7 @@ const initialState: ComplaintState = {
   selectedDocument: null,
   documentStatus: 'idle',
   documentError: null,
+  documentErrorRetryable: false,
   documentWarnings: [],
   qualityAssessment: null,
   correctionInstruction: '',
@@ -251,17 +254,19 @@ function applyEnhancements(
   state.enhancementResultsStale = false
 }
 
-export const processDocumentComplaint = createAsyncThunk(
+export const processDocumentComplaint = createAsyncThunk<
+  Awaited<ReturnType<typeof processComplaintDocument>>,
+  File,
+  { rejectValue: { message: string; retryable: boolean } }
+>(
   'complaint/processDocument',
   async (file: File, { rejectWithValue }) => {
     try {
       return await processComplaintDocument(file)
     } catch (error) {
-      const message =
-        typeof error === 'object' && error !== null && 'message' in error
-          ? String(error.message)
-          : 'Unable to process PDF complaint'
-      return rejectWithValue(message)
+      return rejectWithValue(
+        getApiErrorDetails(error, 'Unable to process PDF complaint'),
+      )
     }
   },
   {
@@ -363,12 +368,14 @@ const complaintSlice = createSlice({
       state.selectedDocument = action.payload
       state.documentStatus = 'selected'
       state.documentError = null
+      state.documentErrorRetryable = false
       state.documentWarnings = []
     },
     removeDocument: (state) => {
       state.selectedDocument = null
       state.documentStatus = 'idle'
       state.documentError = null
+      state.documentErrorRetryable = false
       state.documentWarnings = []
     },
   },
@@ -436,6 +443,7 @@ const complaintSlice = createSlice({
         beginNewIntake(state)
         state.documentStatus = 'uploading'
         state.documentError = null
+        state.documentErrorRetryable = false
         state.documentWarnings = []
       })
       .addCase(processDocumentComplaint.fulfilled, (state, action) => {
@@ -466,11 +474,11 @@ const complaintSlice = createSlice({
       .addCase(processDocumentComplaint.rejected, (state, action) => {
         if (action.meta.condition) return
         state.documentStatus = 'failed'
-        state.documentError = String(
-          action.payload ??
-            action.error.message ??
-            'Unable to process PDF complaint',
-        )
+        state.documentError =
+          action.payload?.message ??
+          action.error.message ??
+          'Unable to process PDF complaint'
+        state.documentErrorRetryable = action.payload?.retryable ?? true
       })
       .addCase(applyCorrection.pending, (state) => {
         state.correctionStatus = 'processing'

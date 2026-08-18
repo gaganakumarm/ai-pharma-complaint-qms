@@ -19,7 +19,10 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"
     cors_origins: list[AnyHttpUrl] = Field(
-        default_factory=lambda: [AnyHttpUrl("http://localhost:5173")]
+        default_factory=lambda: [
+            AnyHttpUrl("http://localhost:5173"),
+            AnyHttpUrl("http://127.0.0.1:5173"),
+        ]
     )
     max_upload_size_mb: int = Field(default=10, gt=0)
     max_pdf_pages: int = Field(default=50, gt=0, le=500)

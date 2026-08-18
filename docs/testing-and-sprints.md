@@ -1,30 +1,28 @@
-# Final Test Report
+# Test Report
 
 ## 1. Scope and status
 
-This report consolidates the accepted verification evidence for the AI-Powered
-Pharmaceutical Customer Complaint Management System at six testing levels. It records
-previously completed release gates; real Groq tests were not repeated for this
-documentation-only update because they consume external quota.
+This report lists what was rerun in the current workspace and which results come from
+earlier project testing. Live Groq tests were not repeated because they use external
+quota.
 
-- Sprints 0–4: **PASSED**
-- Sprint 5: **PASSED WITH EXTERNAL PROVIDER LIMITATION**
-- Sprint 6: **PASSED**
+Documentation review date: **August 18, 2026**. Add the final Git commit SHA after the
+submission commit is created.
 
-Only fictional API and FDF complaint data is authorised for testing and demonstrations.
+Tests and demonstrations use only fictional API and FDF complaint data.
 
 ## 2. Test environment
 
-| Area            | Tools and configuration                                       |
-| --------------- | ------------------------------------------------------------- |
-| Backend         | Python 3.11+, FastAPI, Pydantic, LangGraph                    |
-| Database        | PostgreSQL 16, async SQLAlchemy, asyncpg, Alembic             |
-| Frontend        | React, TypeScript, Vite, Redux Toolkit                        |
-| Backend tests   | Pytest, pytest-asyncio, HTTPX                                 |
-| Frontend tests  | Vitest, React Testing Library, user-event                     |
-| Static analysis | Ruff, strict MyPy, ESLint, Prettier, TypeScript               |
-| Runtime         | Docker Compose: PostgreSQL, FastAPI, Nginx frontend           |
-| AI              | Groq in production; deterministic fake provider in tests only |
+| Area            | Tools and configuration                             |
+| --------------- | --------------------------------------------------- |
+| Backend         | Python 3.11+, FastAPI, Pydantic, LangGraph          |
+| Database        | PostgreSQL 16, async SQLAlchemy, asyncpg, Alembic   |
+| Frontend        | React, TypeScript, Vite, Redux Toolkit              |
+| Backend tests   | Pytest, pytest-asyncio, HTTPX                       |
+| Frontend tests  | Vitest, React Testing Library, user-event           |
+| Static analysis | Ruff, strict MyPy, ESLint, Prettier, TypeScript     |
+| Runtime         | Docker Compose: PostgreSQL, FastAPI, Nginx frontend |
+| AI              | Groq at runtime; predictable fake provider in tests |
 
 ## 3. Level 1 — Backend static checks
 
@@ -42,8 +40,7 @@ mypy app
 | Ruff format | Passed                                 |
 | Strict MyPy | Passed for 39 application source files |
 
-The strict gate covers application source. Tests are excluded because test-double
-typing noise is not part of the accepted application gate.
+MyPy covers the application source. Test files are not part of this type-check command.
 
 ## 4. Level 2 — Backend automated tests
 
@@ -53,7 +50,7 @@ typing noise is not part of the accepted application gate.
 pytest
 ```
 
-Recorded result:
+Rerun result from the project `backend/.venv` on August 18, 2026:
 
 ```text
 107 passed, 28 skipped
@@ -63,7 +60,9 @@ Skips are expected for credential- and PostgreSQL-gated cases when their flags o
 database URL are absent. Coverage includes schemas, service/repository boundaries,
 text and PDF workflows, quality/risk assessment, completeness, duplicate scoring,
 corrections, RCA/CAPA safety, error mapping, retry behavior, prompt-injection
-resistance, trusted human-review controls, and processing non-persistence.
+resistance, frontend review behavior, and confirmation that processing does not write
+to the database. The current application does not authenticate or authorize a QA
+reviewer at the API boundary.
 
 ### Isolated PostgreSQL integration suite
 
@@ -76,7 +75,7 @@ pytest
 Remove-Item Env:TEST_DATABASE_URL
 ```
 
-Recorded result:
+Recorded release result; requires the isolated PostgreSQL test profile to reproduce:
 
 ```text
 115 passed, 20 skipped
@@ -84,13 +83,13 @@ Recorded result:
 
 The remaining skips are credential-gated provider tests. PostgreSQL coverage includes
 inserts and retrieval, complaint-number uniqueness, rollback, pagination, ordering,
-enum constraints, bounded duplicate queries, self-exclusion, processing
-non-persistence, and explicit commit.
+enum constraints, bounded duplicate queries, self-exclusion, no database writes during
+processing, and complaint commit.
 
 ## 5. Level 3 — Database migration tests
 
-Migration verification used only the isolated test database. The development ledger
-containing 21 complaint records was not downgraded.
+Migration verification used only the isolated test database. No development database
+was downgraded.
 
 Verified sequence:
 
@@ -122,7 +121,7 @@ npm run build
 Recorded results:
 
 ```text
-21 tests passed across 4 files
+22 tests passed across 4 files
 0 npm vulnerabilities
 Production build passed
 ```
@@ -130,7 +129,7 @@ Production build passed
 ESLint, Prettier, and TypeScript also passed. Tests cover form validation, Redux draft
 state, text/PDF population, assessment and correction states, completeness,
 duplicates, RCA/CAPA, stale-result and failure handling, duplicate-submission
-prevention, and explicit commit behavior.
+prevention, and commit behavior.
 
 ## 7. Level 5 — API and infrastructure tests
 
@@ -156,56 +155,44 @@ curl.exe "http://localhost:8000/api/complaints/7f94a4c6-d200-459f-acb3-bf0e3c02d
 | Complaint listing            | HTTP 200                                              |
 | Recent service logs          | No release-blocking runtime errors                    |
 
-Known-record read-only verification:
-
-| Field            | Value                                  |
-| ---------------- | -------------------------------------- |
-| UUID             | `7f94a4c6-d200-459f-acb3-bf0e3c02d44f` |
-| Complaint number | `CMP-2026-000021`                      |
-| Batch            | `BMX240602`                            |
-| Quantity         | `48 capsules`                          |
-
-No record was created, updated, or deleted by this verification.
+These infrastructure results come from an earlier full-stack run. Complaint identifiers
+and row counts are omitted because they depend on the local database.
 
 ## 8. Level 6 — Manual end-to-end test
 
-The final controlled browser workflow used fictional samples and the deterministic
-test provider. It verified:
+An earlier browser run used fictional samples and the fake test provider. It verified:
 
 1. FDF PDF extraction into editable fields.
 2. API/FDF classification and quality/risk assessment.
-3. Completeness, duplicate, and advisory RCA/CAPA panels.
+3. Completeness, duplicate, and RCA/CAPA panels.
 4. Conversational batch and quantity correction with recalculation.
-5. Preservation of unrelated values, protected fields, and explicit clearing.
+5. Preservation of unrelated values, protected fields, and field clearing.
 6. No ledger change during processing or correction.
-7. Exactly one ledger increase, from 20 to 21, after explicit commit.
-8. Retrieval of complaint `CMP-2026-000021` by UUID.
+7. Exactly one new database record after commit.
+8. Retrieval of the newly committed complaint by UUID.
 9. API PDF assessment without automatic persistence.
 10. Text-intake regression.
 11. Controlled textless-PDF failure with draft preservation.
 12. Backend restart and successful retrieval of the committed record.
 
-Recorded result: **PASSED**.
+Earlier result: **Passed**.
 
 ## 9. Real Groq compatibility evidence
 
 Credential-gated checks previously validated FDF/API extraction, quality/risk
 assessment, corrections, RCA/CAPA, null preservation, prompt-injection protection,
-and human-review enforcement. Sprint 6 also recorded successful fictional FDF and API
-RCA/CAPA smoke verification under strict schemas.
+and application-supplied review disclaimers. Earlier smoke tests also covered fictional
+FDF and API RCA/CAPA responses. These tests do not imply authenticated QA approval.
 
 ```env
 GROQ_MODEL=openai/gpt-oss-120b
 ```
 
-The suite was not rerun for this documentation change. HTTP 429 is an external quota
-condition and is not automatically retried. It cannot modify the ledger. GPT-OSS 20B
-failed strict compatibility; the rejected Gemini experiment is absent from stable
-source and runtime configuration.
-
-Sprint 5 remains **PASSED WITH EXTERNAL PROVIDER LIMITATION**: deterministic and
-earlier real correction scenarios passed, while a later uninterrupted real-provider
-browser rerun was blocked by HTTP 429.
+The live-provider suite was not rerun for this documentation change. HTTP 429 means the
+Groq quota was exhausted; the application does not retry that response or write a
+complaint. Earlier correction scenarios passed, while a later complete browser rerun
+was stopped by HTTP 429. GPT-OSS 20B did not satisfy the response schemas, and the
+Gemini experiment is not part of the current code or configuration.
 
 ## 10. Security and repository checks
 
@@ -218,25 +205,28 @@ git check-ignore .env
 git grep -n -E "gsk_[A-Za-z0-9]|GEMINI_API_KEY=.{10,}|GROQ_API_KEY=.{10,}"
 ```
 
-Recorded release verification confirmed that `.env` is ignored, no API key is
-tracked, generated caches/builds/local databases are not tracked, and Gemini
-experimental files are absent from stable source.
+An earlier repository check confirmed that `.env` was ignored, no API key was tracked,
+and generated caches, builds, and local databases were not tracked.
 
-For this documentation-only update, only Prettier, relative Markdown links,
-`git diff --check`, and working-tree status were rerun, as required.
+For the August 18, 2026 documentation update, the default backend suite, Ruff lint,
+Ruff format, strict application MyPy, frontend tests, ESLint, and the TypeScript
+production build were rerun. PostgreSQL, Compose, browser, migration, vulnerability
+audit, and real-provider checks were not rerun.
 
 ## 11. Final summary
 
-|    Level | Gate                                                   | Result                                   |
-| -------: | ------------------------------------------------------ | ---------------------------------------- |
-|        1 | Ruff, format, strict application MyPy                  | PASSED                                   |
-|        2 | Default Pytest: 107 passed, 28 expected skips          | PASSED                                   |
-|        2 | PostgreSQL Pytest: 115 passed, 20 expected skips       | PASSED                                   |
-|        3 | Isolated Alembic downgrade/upgrade/re-upgrade          | PASSED                                   |
-|        4 | Frontend checks, 21 tests, build, zero vulnerabilities | PASSED                                   |
-|        5 | Compose, HTTP, health/readiness, retrieval, logs       | PASSED                                   |
-|        6 | Deterministic fictional browser workflow               | PASSED                                   |
-| External | Real Groq compatibility                                | PASSED WITH RECORDED EXTERNAL LIMITATION |
+| Check                                            | Result                            |
+| ------------------------------------------------ | --------------------------------- |
+| Ruff, format, strict application MyPy            | Passed on August 18, 2026         |
+| Default Pytest: 107 passed, 28 expected skips    | Passed on August 18, 2026         |
+| Frontend lint, 22 tests, and production build    | Passed on August 18, 2026         |
+| PostgreSQL Pytest: 115 passed, 20 expected skips | Earlier result; not rerun         |
+| Isolated Alembic downgrade/upgrade/re-upgrade    | Earlier result; not rerun         |
+| Compose, health, readiness, retrieval, and logs  | Earlier result; not rerun         |
+| Fictional browser workflow                       | Earlier result; not rerun         |
+| Live Groq workflow                               | Earlier partial result; quota hit |
 
-No application suite was rerun for this documentation-only change. This report records
-the previously accepted release evidence and does not claim a new real-provider run.
+The default backend suite and static checks plus the frontend test, lint, and build
+checks were rerun on August 18, 2026. Other rows record earlier release evidence and
+do not claim a new PostgreSQL, Compose, browser, migration, vulnerability-audit, or
+real-provider run.
