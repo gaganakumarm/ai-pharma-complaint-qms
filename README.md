@@ -30,20 +30,7 @@ validation, deterministic rules, and the user determine what can be committed.
 
 ## Architecture and workflow
 
-```mermaid
-flowchart LR
-    Input{Manual, text, or PDF} --> UI[React and Redux Toolkit]
-    UI --> API[FastAPI]
-    API --> Services[Application services]
-    Services --> Graphs[LangGraph workflows]
-    Graphs --> Groq[Groq structured output]
-    Services --> Rules[Completeness and duplicate rules]
-    Graphs --> Draft[Validated editable draft]
-    Rules --> Draft
-    Draft --> Review[User review and correction]
-    Review -->|Explicit commit| Repository[Repository and SQLAlchemy]
-    Repository --> DB[(PostgreSQL)]
-```
+![QMS architecture and workflow](docs/QMS-Architecture.png)
 
 Text and PDF processing follow a LangGraph pipeline that normalizes input, extracts
 fields, validates the extraction, assesses quality and risk, calculates completeness,
