@@ -5,7 +5,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from app.ai.graph import build_extraction_warnings, deterministic_test_recommendations
-from app.ai.providers import ComplaintExtractionProvider
+from app.ai.providers import ComplaintCorrectionProvider
 from app.core.exceptions import InputProcessingError, MalformedProviderResponseError
 from app.schemas.assessment import ComplaintQualityAssessment
 from app.schemas.correction import (
@@ -61,7 +61,7 @@ def _label(field: CorrectionField) -> str:
 
 
 def build_correction_graph(
-    provider: ComplaintExtractionProvider, maximum_length: int
+    provider: ComplaintCorrectionProvider, maximum_length: int
 ) -> Any:
     async def normalize(state: CorrectionGraphState) -> CorrectionGraphState:
         return {

@@ -4,13 +4,17 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from app.ai.graph import build_complaint_graph, normalize_text
+from app.ai.graph import (
+    build_complaint_graph,
+    deterministic_test_recommendations,
+    normalize_text,
+)
 from app.core.exceptions import (
     InputProcessingError,
     MalformedProviderResponseError,
     ProviderAuthenticationError,
 )
-from app.schemas.assessment import HUMAN_REVIEW_DISCLAIMER
+from app.schemas.assessment import HUMAN_REVIEW_DISCLAIMER, ComplaintQualityAssessment
 from app.schemas.extraction import ExtractedComplaint
 from app.services.text_processing import TextComplaintProcessingService
 
@@ -67,20 +71,27 @@ class FakeProvider:
         self.assessment_payload = assessment_payload or assessment()
         self.calls = 0
         self.assessment_calls = 0
+        self.rca_capa_calls = 0
 
-    async def extract(self, _text: str) -> Mapping[str, Any]:
+    async def extract(self, text: str) -> Mapping[str, Any]:
         self.calls += 1
         if isinstance(self.payload, Exception):
             raise self.payload
         return self.payload
 
     async def assess_complaint(
-        self, _complaint: ExtractedComplaint
+        self, complaint: ExtractedComplaint
     ) -> Mapping[str, Any]:
         self.assessment_calls += 1
         if isinstance(self.assessment_payload, Exception):
             raise self.assessment_payload
         return self.assessment_payload
+
+    async def recommend_rca_capa(
+        self, complaint: ExtractedComplaint, assessment: ComplaintQualityAssessment
+    ) -> dict[str, object]:
+        self.rca_capa_calls += 1
+        return deterministic_test_recommendations()
 
 
 def test_normalize_input_preserves_identifier_and_spacing() -> None:
@@ -139,6 +150,7 @@ async def test_langgraph_executes_all_nodes_for_api_and_fdf(
         "validate_rca_capa",
         "prepare_response",
     ]
+    assert provider.rca_capa_calls == 1
     assert result["extracted_complaint"].product_type.value == product_type
     assert result["extracted_complaint"].batch_lot_number == "LOT-9/A"
 

@@ -5,9 +5,11 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.ai.correction_graph import build_correction_graph
+from app.ai.graph import deterministic_test_recommendations
 from app.api.dependencies import get_correction_service
 from app.core.config import Settings
 from app.main import create_app
+from app.schemas.assessment import ComplaintQualityAssessment
 from app.schemas.correction import CorrectableComplaint
 from app.services.correction_processing import ComplaintCorrectionService
 
@@ -28,7 +30,7 @@ class Provider:
     model = "fake-model"
 
     async def extract_correction(
-        self, current: CorrectableComplaint, instruction: str
+        self, current_complaint: CorrectableComplaint, instruction: str
     ) -> dict[str, Any]:
         return {
             "updates": [
@@ -41,6 +43,11 @@ class Provider:
 
     async def assess_complaint(self, complaint: CorrectableComplaint) -> dict[str, Any]:
         return ASSESSMENT
+
+    async def recommend_rca_capa(
+        self, complaint: CorrectableComplaint, assessment: ComplaintQualityAssessment
+    ) -> dict[str, object]:
+        return deterministic_test_recommendations()
 
 
 @pytest.fixture

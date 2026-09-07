@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.ai.correction_graph import build_correction_graph
+from app.ai.graph import deterministic_test_recommendations
 from app.core.exceptions import ProviderTimeoutError
 from app.schemas.assessment import ComplaintQualityAssessment
 from app.schemas.correction import (
@@ -13,6 +14,7 @@ from app.schemas.correction import (
     CorrectableComplaint,
     CorrectionField,
 )
+from app.schemas.enhancements import RcaCapaRecommendations
 from app.services.corrections import merge_correction
 
 
@@ -43,15 +45,22 @@ class FakeProvider:
     def __init__(self, patch: dict[str, Any]) -> None:
         self.patch = patch
         self.assessments = 0
+        self.rca_capa_calls = 0
 
     async def extract_correction(
-        self, current: CorrectableComplaint, instruction: str
+        self, current_complaint: CorrectableComplaint, instruction: str
     ) -> dict[str, Any]:
         return self.patch
 
     async def assess_complaint(self, complaint: CorrectableComplaint) -> dict[str, Any]:
         self.assessments += 1
         return assessment().model_dump()
+
+    async def recommend_rca_capa(
+        self, complaint: CorrectableComplaint, assessment: ComplaintQualityAssessment
+    ) -> dict[str, object]:
+        self.rca_capa_calls += 1
+        return deterministic_test_recommendations()
 
 
 @pytest.mark.parametrize(
@@ -150,6 +159,7 @@ async def test_graph_runs_nodes_and_reassesses_quality_change() -> None:
     )
     assert result["changed_fields"] == ["affected_quantity"]
     assert provider.assessments == 1
+    assert provider.rca_capa_calls == 1
     assert result["execution_trace"] == [
         "normalize_instruction",
         "extract_correction",
@@ -222,7 +232,13 @@ async def test_non_risk_change_skips_reassessment() -> None:
 
 @pytest.mark.asyncio
 async def test_reassessment_failure_returns_no_partial_result() -> None:
-    provider = FakeProvider(
+    class FailingProvider(FakeProvider):
+        async def assess_complaint(
+            self, complaint: CorrectableComplaint
+        ) -> dict[str, object]:
+            raise ProviderTimeoutError
+
+    provider = FailingProvider(
         {
             "updates": [
                 {
@@ -235,10 +251,6 @@ async def test_reassessment_failure_returns_no_partial_result() -> None:
         }
     )
 
-    async def fail(_complaint: CorrectableComplaint) -> dict[str, Any]:
-        raise ProviderTimeoutError
-
-    provider.assess_complaint = fail  # type: ignore[method-assign]
     with pytest.raises(ProviderTimeoutError):
         await build_correction_graph(provider, 2000).ainvoke(
             {
@@ -261,3 +273,28 @@ def test_too_many_updates_are_rejected() -> None:
                 "clarification_question": None,
             }
         )
+
+
+@pytest.mark.parametrize("field", ["customer_name", "complaint_description"])
+async def test_correction_reuses_rca_capa_only_for_non_risk_changes(field: str) -> None:
+    provider = FakeProvider(
+        {
+            "updates": [{"field": field, "value": "Updated complaint detail"}],
+            "clarification_required": False,
+            "clarification_question": None,
+        }
+    )
+    recommendations = RcaCapaRecommendations.model_validate(
+        deterministic_test_recommendations()
+    )
+    result = await build_correction_graph(provider, 2000).ainvoke(
+        {
+            "current_complaint": draft(),
+            "instruction": "Update complaint detail",
+            "current_quality_assessment": assessment(),
+            "current_rca_capa_recommendations": recommendations,
+            "execution_trace": [],
+        }
+    )
+    assert provider.rca_capa_calls == (1 if field == "complaint_description" else 0)
+    assert result["rca_capa_recommendations"] == recommendations

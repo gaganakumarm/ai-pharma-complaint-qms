@@ -1,12 +1,12 @@
 import copy
 import uuid
 from datetime import UTC, datetime
-from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
 from app.domain import ComplaintStatus
+from app.infrastructure.database.models import ComplaintModel
 from app.schemas.enhancements import (
     RCA_CAPA_DISCLAIMER,
     DuplicateCheckRequest,
@@ -41,7 +41,7 @@ def complete_draft(**updates: object) -> dict[str, object]:
     return draft
 
 
-def candidate(**updates: object) -> SimpleNamespace:
+def candidate(**updates: object) -> ComplaintModel:
     values = {
         "id": uuid.UUID("00000000-0000-0000-0000-000000000001"),
         "complaint_number": "CMP-2026-000001",
@@ -54,7 +54,7 @@ def candidate(**updates: object) -> SimpleNamespace:
         "created_at": datetime(2026, 1, 1, tzinfo=UTC),
     }
     values.update(updates)
-    return SimpleNamespace(**values)
+    return ComplaintModel(**values)
 
 
 def duplicate_draft() -> DuplicateCheckRequest:
@@ -173,7 +173,7 @@ async def test_duplicate_ranking_is_deterministic_and_bounded() -> None:
     class Source:
         async def find_duplicate_candidates(
             self, request: DuplicateCheckRequest, limit: int
-        ) -> list[SimpleNamespace]:
+        ) -> list[ComplaintModel]:
             assert limit == 50
             return records
 
