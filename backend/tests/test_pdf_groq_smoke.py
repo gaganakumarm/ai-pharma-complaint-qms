@@ -75,10 +75,15 @@ async def test_textless_pdf_fails_before_groq() -> None:
     class NeverProvider:
         model = "never"
 
-        async def extract(self, _text: str) -> Mapping[str, Any]:
+        async def extract(self, text: str) -> Mapping[str, Any]:
             raise AssertionError("Groq must not be called for a textless PDF")
 
-        async def assess_complaint(self, _complaint: object) -> Mapping[str, Any]:
+        async def assess_complaint(self, complaint: object) -> Mapping[str, Any]:
+            raise AssertionError("Groq must not be called for a textless PDF")
+
+        async def recommend_rca_capa(
+            self, complaint: object, assessment: object
+        ) -> Mapping[str, object]:
             raise AssertionError("Groq must not be called for a textless PDF")
 
     provider = NeverProvider()

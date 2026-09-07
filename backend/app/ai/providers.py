@@ -36,6 +36,41 @@ from app.schemas.enhancements import RcaCapaRecommendations
 from app.schemas.extraction import ExtractedComplaint
 
 
+class ProviderMetadata(Protocol):
+    @property
+    def model(self) -> str: ...
+
+
+class ComplaintIntakeProvider(Protocol):
+    async def extract(self, text: str) -> Mapping[str, object]: ...
+
+    async def assess_complaint(
+        self, complaint: ExtractedComplaint
+    ) -> Mapping[str, object]: ...
+
+    async def recommend_rca_capa(
+        self,
+        complaint: ExtractedComplaint,
+        assessment: ComplaintQualityAssessment,
+    ) -> Mapping[str, object]: ...
+
+
+class ComplaintCorrectionProvider(Protocol):
+    async def extract_correction(
+        self, current_complaint: CorrectableComplaint, instruction: str
+    ) -> Mapping[str, object]: ...
+
+    async def assess_complaint(
+        self, complaint: CorrectableComplaint
+    ) -> Mapping[str, object]: ...
+
+    async def recommend_rca_capa(
+        self,
+        complaint: CorrectableComplaint,
+        assessment: ComplaintQualityAssessment,
+    ) -> Mapping[str, object]: ...
+
+
 class ComplaintExtractionProvider(Protocol):
     model: str
 

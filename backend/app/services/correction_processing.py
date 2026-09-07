@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.ai.providers import ComplaintExtractionProvider
+from app.ai.providers import ProviderMetadata
 from app.schemas.correction import (
     ComplaintCorrectionRequest,
     ComplaintCorrectionResponse,
@@ -24,7 +24,7 @@ class ComplaintCorrectionService:
     def __init__(
         self,
         graph: Any,
-        provider: ComplaintExtractionProvider,
+        provider: ProviderMetadata,
         duplicate_service: DuplicateDetectionService | None = None,
     ) -> None:
         self.graph = graph

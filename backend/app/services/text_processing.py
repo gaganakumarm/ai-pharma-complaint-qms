@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.ai.providers import ComplaintExtractionProvider
+from app.ai.providers import ProviderMetadata
 from app.domain import SourceType
 from app.schemas.enhancements import DuplicateCheckRequest
 from app.schemas.extraction import ProcessTextResponse
@@ -11,7 +11,7 @@ class TextComplaintProcessingService:
     def __init__(
         self,
         graph: Any,
-        provider: ComplaintExtractionProvider,
+        provider: ProviderMetadata,
         duplicate_service: DuplicateDetectionService | None = None,
     ) -> None:
         self.graph = graph

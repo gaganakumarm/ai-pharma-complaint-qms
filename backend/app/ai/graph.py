@@ -4,7 +4,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.ai.providers import ComplaintExtractionProvider
+from app.ai.providers import ComplaintIntakeProvider
 from app.core.exceptions import InputProcessingError, MalformedProviderResponseError
 from app.domain import SourceType
 from app.schemas.assessment import ComplaintQualityAssessment
@@ -96,7 +96,7 @@ def normalize_text(raw_text: str, maximum_length: int) -> str:
 
 
 def build_complaint_graph(
-    provider: ComplaintExtractionProvider, maximum_length: int
+    provider: ComplaintIntakeProvider, maximum_length: int
 ) -> Any:
     completeness_checker = ComplaintCompletenessChecker()
 

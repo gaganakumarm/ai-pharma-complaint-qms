@@ -68,7 +68,7 @@ class DeterministicAcceptanceProvider:
         }
 
     async def extract_correction(
-        self, current: CorrectableComplaint, instruction: str
+        self, current_complaint: CorrectableComplaint, instruction: str
     ) -> Mapping[str, Any]:
         lowered = instruction.lower()
         if "number is wrong" in lowered:
@@ -101,7 +101,9 @@ class DeterministicAcceptanceProvider:
         elif "fictional retry" in lowered:
             updates = [{"field": "customer_name", "value": "Fictional Retry Company"}]
         else:
-            updates = [{"field": "customer_name", "value": current.customer_name}]
+            updates = [
+                {"field": "customer_name", "value": current_complaint.customer_name}
+            ]
         return {
             "updates": updates,
             "clarification_required": False,
@@ -156,7 +158,4 @@ class DeterministicAcceptanceProvider:
 settings = Settings(
     database_url=os.getenv("FAKE_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 )
-main_module.GroqComplaintExtractionProvider = (  # type: ignore[misc]
-    lambda *_args, **_kwargs: DeterministicAcceptanceProvider()
-)
-app = main_module.create_app(settings)
+app = main_module.create_app(settings, provider_factory=DeterministicAcceptanceProvider)
